@@ -22,6 +22,43 @@ We are using FLIR A645 SC camera for thermal imaging. The FLIR A645 SC camera of
 
 The FLIR A645 SC is perfect for applications requiring detailed thermal analysis, such as electronics inspection, battery evaluation, solar cell examination, and medical diagnostics.
 
+## Realsense D405 Overview
+
+The Intel® RealSense™ Depth Camera D405 is a short-range stereo camera providing sub-millimeter accuracy for your close-range computer vision needs.
+
+- **Manufacturer** Intel
+- **Product Type** Housed Camera
+- **Depth Technology:** Passive Stereo
+- **Horizontal Resolution [px]:** 1280
+- **Vertical Resolution [px]:** 720
+- **Shutter Type:** Global Shutter
+- **Field of View Horizontal [°]** 84
+- **Field of View Vertical [°]** 58
+- **Field of View Diagonal [°]** 92
+- **Max. Depth Resolution** 1279 x 720
+- **Max. Depth Frame Rate [fps]** 30
+- **RGB Sensor** Yes
+- **Max. RGB Resolution** 1280 x 720
+- **Max. RGB Frame Rate [fps]** 30
+- **Interface** USB3.1
+- **Baseline [mm]** 18
+- **Minimum Depth Distance [mm]** 100
+- **Min. Operating Temperature (Backside Housing) [°C]** 0
+- **Max. Operating Temperature (Backside Housing) [°C]** 55
+- **Min. Storage Temperature (Ambient, Sustained) [°C]** 0
+- **Max. Storage Temperature (Ambient, Sustained) [°C]** 50
+- **Dimensions LxBxH [mm]** 42 x 42 x 23
+- **Operating Relative Humidity [%]** 90
+- **Ideal Range [m]** 0.07 to 0.5
+- **Depth Filter** IR-Cut
+- **Interial Measurement Unit (IMU)** No
+- **Software Compatible** Intel RealSense SDK 2.0
+- **Includes** Intel® RealSense™ D405 Depth Camera
+
+### Applications 
+
+Defect Inspection, Pick & Place, Smart Agriculture, Medical Technology
+
 **In this project, we are using FLIR A645 SC camera to generate the thermal image of the leaf.**
 
 ## Testing Software
@@ -38,3 +75,4 @@ More information is given in [`testing.doc`](https://anu365.sharepoint.com/sites
 
 [FLIR A655sc Camera Specifications](https://www.flir.com.au/products/a655sc/)
 
+[Realsense D405](https://www.framos.com/en/products/intel-realsense-depth-camera-d405-camera-only-26126)
