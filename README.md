@@ -1,5 +1,7 @@
 # APPF Overview
 
+The Australian Plant Phenomics Facility (APPF) is a world-leading infrastructure facility that underpins innovative plant phenomics research to accelerate the development of new and improved crops, healthier food and more sustainable agricultural practice. We currently have nodes at the University of Adelaide and the Australian National University.
+
 
 # APPF_FLIR Project Overview
 
