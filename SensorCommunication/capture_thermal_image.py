@@ -28,7 +28,7 @@ class StreamMode:
     
 
 CHOSEN_STREAMMODE = StreamMode.STREAM_MODE_TELEDYNE_GIGE_VISION
-NUM_IMAGES =   30 # number of images to grab
+NUM_IMAGES =   20 # number of images to grab
 
 def set_stream_mode(cam):
     """
