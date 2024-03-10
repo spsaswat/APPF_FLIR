@@ -26,34 +26,13 @@ The FLIR A645 SC is perfect for applications requiring detailed thermal analysis
 
 The Intel® RealSense™ Depth Camera D405 is a short-range stereo camera providing sub-millimeter accuracy for your close-range computer vision needs.
 
-- **Manufacturer** Intel
-- **Product Type** Housed Camera
-- **Depth Technology:** Passive Stereo
-- **Horizontal Resolution [px]:** 1280
-- **Vertical Resolution [px]:** 720
-- **Shutter Type:** Global Shutter
-- **Field of View Horizontal [°]** 84
-- **Field of View Vertical [°]** 58
-- **Field of View Diagonal [°]** 92
-- **Max. Depth Resolution** 1279 x 720
-- **Max. Depth Frame Rate [fps]** 30
-- **RGB Sensor** Yes
-- **Max. RGB Resolution** 1280 x 720
-- **Max. RGB Frame Rate [fps]** 30
-- **Interface** USB3.1
-- **Baseline [mm]** 18
-- **Minimum Depth Distance [mm]** 100
-- **Min. Operating Temperature (Backside Housing) [°C]** 0
-- **Max. Operating Temperature (Backside Housing) [°C]** 55
-- **Min. Storage Temperature (Ambient, Sustained) [°C]** 0
-- **Max. Storage Temperature (Ambient, Sustained) [°C]** 50
-- **Dimensions LxBxH [mm]** 42 x 42 x 23
-- **Operating Relative Humidity [%]** 90
-- **Ideal Range [m]** 0.07 to 0.5
-- **Depth Filter** IR-Cut
-- **Interial Measurement Unit (IMU)** No
-- **Software Compatible** Intel RealSense SDK 2.0
-- **Includes** Intel® RealSense™ D405 Depth Camera
+- **Resolution:** 1280 x 720 pixels
+- **Range:** Ideal Range [m]: 0.07 to 0.5; Operating Temperature[°C]: 0-55; Storage Temperature[°C]: 0-50
+- **Product Type:** Housed Camera
+- **Depth range:** 7 cm to 50 cm
+- **Depth accuracy:** +/- 1.4% at 20 cm
+
+For more information, please refer to "Realsense D405" in the relevant Links
 
 ### Applications 
 
