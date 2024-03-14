@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -50,56 +51,93 @@ def apply_inferno_colormap(image_path, save_path):
         print(f"An error occurred while processing the image: {e}")
 
 
-def load_images():
+def apply_custom_colormap(image_path, save_path):
     """
-    Opens and loads all the images in the directory into a list.
+    Applies a custom colormap to the images, displays it with a color bar, and saves the processed image.
+
+    Parameters:
+    image_path (str): The file path of the image to which the colormap will be applied.
+    save_path (str): The file path where the processed image will be saved.
     """
-    # Read all images into a list
-    images = [Image.open(f"Acquisition/20240310-132208/Acquisition-{i}.jpg") for i in range(20)]
-    return images
+     # Load the image
+    image = mpimg.imread(image_path)
 
+    # Define the custom colormap
+    # [       Black,    Dark Purple,    Blue,       Cyan,     Green,    Yellow,     Orange,       Red,      White]
+    cmap = [(0, 0, 0), (0.5, 0, 0.5), (0, 0, 1), (0, 1, 1), (0, 1, 0), (1, 1, 0), (1, 0.5, 0), (1, 0, 0), (1, 1, 1)]
 
-def apply_custom_colormap(colormap=None):
+    # Convert to LinearSegmented Colormap
+    custom_colormap = LinearSegmentedColormap.from_list("custom_ironbow", cmap, N=256)
+
+    # Create a figure and axis for the image
+    fig, ax = plt.subplots()
+    # Apply the custom colormap
+    cax = ax.imshow(image, cmap=custom_colormap)
+    # Add a color bar on the side showing the scale
+    fig.colorbar(cax)
+    # Save the figure with the image
+    plt.savefig(save_path)
+    # Close the figure to free memory
+    plt.close(fig)
+    
+    print(f"Image saved to: {save_path}")
+
+def process_directory(directory, colormap_choice):
     """
-        Applies a custom colormap to the images, displays it with a color bar, and saves the processed image.
+    Processes all images in the specified directory using the selected colormap.
 
-        Parameters:
-        colormap (list): The custom colormap to be applied onto the images.
-        """
-    # Check if a colormap is provided, else revert to default "ironbow"
-    if colormap is None:
-        # [       Black,    Dark Purple,    Blue,       Cyan,     Green,    Yellow,     Orange,       Red,      White]
-        cmap = [(0, 0, 0), (0.5, 0, 0.5), (0, 0, 1), (0, 1, 1), (0, 1, 0), (1, 1, 0), (1, 0.5, 0), (1, 0, 0), (1, 1, 1)]
+    Parameters:
+    directory (str): The directory containing the images.
+    colormap_choice (str): The selected colormap ('inferno' or 'custom').
+    """
+    
+    #Get a list of all files in the directory
+    files = os.listdir(directory)
+    #Compile regular expression patterns to match file names in the format of "on number. jpg
+    pattern = re.compile(r'on-(\d+).jpg$')
+    #Iteration of the file list, retaining only the file names that match the regular expression
+    files_with_numbers = [(f, int(pattern.search(f).group(1))) for f in files if pattern.search(f)]
+    #Sort based on the numerical part of the file name
+    files_with_numbers.sort(key=lambda x: x[1])
 
-        # Convert to LinearSegmented Colormap
-        colormap = LinearSegmentedColormap.from_list("custom_ironbow", cmap, N=256)
-
-    # Iterate through all images
-    for i, image in enumerate(load_images()):
-        # Create a figure and axis for the image
-        fig, ax = plt.subplots()
-        # Apply the custom colormap
-        cax = ax.imshow(image, cmap=colormap)
-        # Add a color bar on the side showing the scale
-        fig.colorbar(cax)
-        # Save the figure with the image
-        plt.savefig(f"Acquisition/20240310-132157/CustomMap-{i}.jpg")
-        # Close the figure to free memory
-        plt.close(fig)
+    #Colour processing each files
+    for file_name, number in files_with_numbers:
+        #The complete path to the construction file
+        file_path = os.path.join(directory, file_name)
+        
+        # Construct a save path for processed images based on the colormap choice
+        if colormap_choice.lower() == 'inferno':
+            # For inferno colormap
+            save_pattern = 'inferno_{}.jpg'
+            save_path = os.path.join(directory, save_pattern.format(number))
+        elif colormap_choice.lower() == 'custom':
+            save_pattern = 'c_ironbow_{}.jpg'
+            # For custom colormap
+            save_path = os.path.join(directory, save_pattern.format(number))
+        else:
+            print(f"Invalid colormap choice: {colormap_choice}")
+            return
+        
+        #Process and save images based on user selection
+        if colormap_choice.lower() == 'inferno':
+            #Execute inferno color processing
+            apply_inferno_colormap(file_path, save_path)
+        elif colormap_choice.lower() == 'custom':
+            #Execute inferno custom processing
+            apply_custom_colormap(file_path, save_path)
+        else:
+            #Report errors
+            print(f"Invalid colormap choice: {colormap_choice}")
 
 
 # Base directory and file pattern
 base_dir = 'SensorCommunication/Acquisition/20240310-132157'
-file_pattern = 'Acquisition-{}.jpg'
-save_pattern = 'inferno_{}.jpg'
 
-# Loop through the range of images
-for i in range(20):  # There are images from Acquisition-0 to Acquisition-19
-    # Format the file path with the current index
-    file_path = os.path.join(base_dir, file_pattern.format(i))
-    # Format the save path with the new naming scheme
-    save_path = os.path.join(base_dir, save_pattern.format(i))  # inferno_0 for Acquisition-0 and so on
-    # Apply the Inferno colormap to the current image and save it
-    apply_inferno_colormap(file_path, save_path)
+# Prompt user for colormap choice
+colormap_choice = input("Enter 'inferno' to use the standard colormap or 'custom' to use a custom colormap: ")
 
-apply_custom_colormap()
+# Process each directory
+process_directory(base_dir, colormap_choice)
+
+# Wait for the user to press Enter to exit
+input("Processing complete. Press Enter to exit...")
