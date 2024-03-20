@@ -10,6 +10,8 @@ import json
 current_position = 0.0
 all_imgs = []
 
+# serial_number = 'f1230450' #L515
+# serial_number = '017322071325' #D435
 serial_number = '128422272123'  #D405
 
 save_fold_p = './data/test_plant_'
@@ -124,22 +126,57 @@ def capture_images(pipeline, position):
     # time_4 = time.time()
     # print((time_4 - time_0)*1000)
 
+def joint_states_callback(message):
+    global current_position
+    current_position = message.position[0]
+
+    # if current_position % 10 < 2:
+        # capture_images(current_position)
+
+# This function will publish a light command
+def switch_light(state):
+    light_command = UInt16()
+    light_command.data = state
+    light_publisher.publish(light_command)
+
+
+def start_moving_robot():
+
+    velocity = 0.038
+
+    cmd_vel_message = Twist()
+    cmd_vel_message.linear.x = velocity
+
+    cmd_vel_publisher.publish(cmd_vel_message)
+
+def stop_moving_robot():
+    cmd_vel_message = Twist()
+    cmd_vel_publisher.publish(cmd_vel_message)
     
+def go_home():
+    # Build the message
+    msg = GotoActionGoal()
+    msg.header = Header()
+    msg.goal_id = GoalID()
+    msg.goal.position = 0.005
+    msg.goal.velocity = 0.2
 
-    # Save images
-    cv2.imwrite(f'./data/test_plant/rgb_{position}.png', color_image)
-    cv2.imwrite(f'./data/test_plant/depth_{position}.png', depth_image)
-
-    # Configure the RealSense camera
+    # Make sure rospy is still running and then publish
+    # if not rospy.is_shutdown():
+    pub.publish(msg)
+    
+    
+# Configure the RealSense camera
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_device(serial_number)
 
-
-
+# config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #L515
+# config.enable_stream(rs.stream.depth, 1024, 768, rs.format.z16, 30)  #L515
+# config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30) #D435
+# config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)  #D435
 config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #D405
 config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)  #D405
-
 
 # Align depth frame to color frame
 align = rs.align(rs.stream.color)
@@ -147,19 +184,15 @@ align = rs.align(rs.stream.color)
 
 
 
-
 # Start pipeline and capture initial frames
 start_pipeline()
-
 
 # Save intrinsics
 save_intrinsics()
 
-
 for i in range(2):
     frames = pipeline.wait_for_frames()
     frames = pipeline.wait_for_frames()
-
 
 capture_images(pipeline, 1)
 
