@@ -2,6 +2,9 @@ import time
 import pyrealsense2 as rs
 import numpy as np
 import cv2
+from datetime import datetime
+import os
+import json
 
 # Initialize the global variable
 current_position = 0.0
@@ -124,5 +127,39 @@ def capture_images(pipeline, position):
     
 
     # Save images
-    cv2.imwrite(f'./data/test_plant/rgb_{position}.jpeg', color_image)
-    cv2.imwrite(f'./data/test_plant/depth_{position}.jpeg', depth_image)
+    cv2.imwrite(f'./data/test_plant/rgb_{position}.png', color_image)
+    cv2.imwrite(f'./data/test_plant/depth_{position}.png', depth_image)
+
+    # Configure the RealSense camera
+pipeline = rs.pipeline()
+config = rs.config()
+config.enable_device(serial_number)
+
+
+
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #D405
+config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)  #D405
+
+
+# Align depth frame to color frame
+align = rs.align(rs.stream.color)
+
+
+
+
+
+# Start pipeline and capture initial frames
+start_pipeline()
+
+
+# Save intrinsics
+save_intrinsics()
+
+
+for i in range(2):
+    frames = pipeline.wait_for_frames()
+    frames = pipeline.wait_for_frames()
+
+
+capture_images(pipeline, 1)
+
