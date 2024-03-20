@@ -126,44 +126,9 @@ def capture_images(pipeline, position):
     # time_4 = time.time()
     # print((time_4 - time_0)*1000)
 
-def joint_states_callback(message):
-    global current_position
-    current_position = message.position[0]
-
-    # if current_position % 10 < 2:
-        # capture_images(current_position)
-
-# This function will publish a light command
-def switch_light(state):
-    light_command = UInt16()
-    light_command.data = state
-    light_publisher.publish(light_command)
 
 
-def start_moving_robot():
 
-    velocity = 0.038
-
-    cmd_vel_message = Twist()
-    cmd_vel_message.linear.x = velocity
-
-    cmd_vel_publisher.publish(cmd_vel_message)
-
-def stop_moving_robot():
-    cmd_vel_message = Twist()
-    cmd_vel_publisher.publish(cmd_vel_message)
-    
-def go_home():
-    # Build the message
-    msg = GotoActionGoal()
-    msg.header = Header()
-    msg.goal_id = GoalID()
-    msg.goal.position = 0.005
-    msg.goal.velocity = 0.2
-
-    # Make sure rospy is still running and then publish
-    # if not rospy.is_shutdown():
-    pub.publish(msg)
     
     
 # Configure the RealSense camera
