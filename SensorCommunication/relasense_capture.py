@@ -119,17 +119,12 @@ def capture_images(pipeline, position):
     
 #     Change accrding to camera requirements
     all_imgs.append((color_image.copy(), save_fold_p+'rgb_'+str(position)+'.png'))
-    # cv2.imwrite(save_fold_p+'rgb_'+str(position)+'.png' , color_image)
+    cv2.imwrite(save_fold_p+'rgb_'+str(position)+'.png' , color_image)
     cv2.imwrite(save_fold_p+'depth_'+str(position)+'.png', depth_image)
     # all_imgs.append((depth_image.copy(), save_fold_p+'depth_'+str(position)+'.png'))
 
     # time_4 = time.time()
     # print((time_4 - time_0)*1000)
-
-
-
-
-    
     
 # Configure the RealSense camera
 pipeline = rs.pipeline()
