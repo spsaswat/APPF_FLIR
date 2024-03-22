@@ -87,72 +87,33 @@ def save_intrinsics():
         json.dump(intrinsics_dict, outfile, indent=4)
 
 
-def capture_images(pipeline, position):
-    # The pipeline is assumed to already be started
-    # time_0 = time.time()
+def capture_images(pipeline, total_images=20, delay=1):
+    for i in range(total_images):
+        frames = pipeline.wait_for_frames()
+        aligned_frames = align.process(frames)
+        depth_frame = aligned_frames.get_depth_frame()
+        color_frame = aligned_frames.get_color_frame()
 
-    # Capture one frame
-    frames = pipeline.wait_for_frames()
+        depth_image = np.asanyarray(depth_frame.get_data())
+        color_image = np.asanyarray(color_frame.get_data())
 
-    # time_1 = time.time()
-    # print((time_1 - time_0)*1000)
+        position_str = f"{i+1:06d}"  # Adjust the file naming as per requirements
+        
+        cv2.imwrite(os.path.join(save_fold_p, f'rgb_{position_str}.png'), color_image)
+        cv2.imwrite(os.path.join(save_fold_p, f'depth_{position_str}.png'), depth_image)
 
+        time.sleep(delay)
 
-    aligned_frames = align.process(frames)
-
-    # Get aligned depth and color frames
-    depth_frame = aligned_frames.get_depth_frame()
-    color_frame = aligned_frames.get_color_frame()
-
-    # time_2 = time.time()
-    # print((time_2 - time_0)*1000)
-
-    # Convert depth and color frames to numpy arrays
-    depth_image = np.asanyarray(depth_frame.get_data())
-    color_image = np.asanyarray(color_frame.get_data())
-
-    # time_3 = time.time()
-    # print((time_3 - time_0)*1000)
-
-    # Save images
-    position = int(position * 10**6)
-    
-#     Change accrding to camera requirements
-    all_imgs.append((color_image.copy(), save_fold_p+'rgb_'+str(position)+'.png'))
-    cv2.imwrite(save_fold_p+'rgb_'+str(position)+'.png' , color_image)
-    cv2.imwrite(save_fold_p+'depth_'+str(position)+'.png', depth_image)
-    # all_imgs.append((depth_image.copy(), save_fold_p+'depth_'+str(position)+'.png'))
-
-    # time_4 = time.time()
-    # print((time_4 - time_0)*1000)
-    
 # Configure the RealSense camera
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_device(serial_number)
-
-# config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #L515
-# config.enable_stream(rs.stream.depth, 1024, 768, rs.format.z16, 30)  #L515
-# config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30) #D435
-# config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)  #D435
-config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #D405
-config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)  #D405
-
-# Align depth frame to color frame
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)  # Adjust as per your device's capabilities
+config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)    # Adjust as per your device's capabilities
 align = rs.align(rs.stream.color)
 
-
-
-
-# Start pipeline and capture initial frames
 start_pipeline()
-
-# Save intrinsics
 save_intrinsics()
-
-for i in range(2):
-    frames = pipeline.wait_for_frames()
-    frames = pipeline.wait_for_frames()
-
-capture_images(pipeline, 1)
+capture_images(pipeline, 20, 1)
+stop_pipeline()
 
