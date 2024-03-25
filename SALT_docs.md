@@ -19,7 +19,7 @@ This guide provides step-by-step instructions for running the segmentation tool.
     ```
 3. Execute the `extract_embeddings.py` script with the appropriate parameters:
     ```bash
-    python extract_embeddings.py --checkpoint-path /home/appf_flir/Downloads/salt-main/models/sam_vit_h_4b8939.pth --dataset-path /home/appf_flir/Downloads/salt-main/database/plants
+    python extract_embeddings.py --checkpoint-path /home/appf_flir/Downloads/salt-main/models/sam_vit_h_4b8939.pth --dataset-path /home/appf_flir/Downloads/salt-main/database
     ```
     This script will process the specified dataset and generate new Python files containing the embeddings.
 
