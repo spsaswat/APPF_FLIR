@@ -9,7 +9,7 @@ This guide provides step-by-step instructions for running the segmentation tool.
 - Install Segment Anything on any machine with a GPU.
 - The code requires python>=3.8, as well as pytorch>=1.7 and torchvision>=0.8. Please follow the instructions here to install both PyTorch and TorchVision dependencies. Installing both PyTorch and TorchVision with CUDA support is strongly recommended.
 
-### Setting Up SALT
+### Set up SALT
 1. Install Python>=3.8 (Anaconda...)
 2. Please follow the instructions [here](https://pytorch.org/get-started/locally/) to install both PyTorch and TorchVision dependencies. Installing both PyTorch and TorchVision with CUDA support is strongly recommended.
 3. Navigate to the `salt-main` project directory in your terminal. If you've downloaded and extracted the project to `Downloads`, you can use the following command:
@@ -83,11 +83,12 @@ Call segment_anything_annotator.py with argument <dataset_name> and categories c
 ### Step 4: Use SALT quickly
 There are a few keybindings that make the annotation process fast.
 Click on the object using left clicks and right click (to indicate outside object boundary).
-n adds predicted mask into your annotations. (Add button)
-r rejects the predicted mask. (Reject button)
-a and d to cycle through images in your your set. (Next and Prev)
-l and k to increase and decrease the transparency of the other annotations.
-Ctrl + S to save progress to the COCO-style annotations file.
+-n adds predicted mask into your annotations. (Add button)
+-r rejects the predicted mask. (Reject button)
+-a and d to cycle through images in your your set. (Next and Prev)
+-l and k to increase and decrease the transparency of the other annotations.
+-Ctrl + S to save progress to the COCO-style annotations file.
+
 [coco-viewer](https://github.com/trsvchn/coco-viewer) to view your annotations.
 python cocoviewer.py -i <dataset> -a <dataset>/annotations.json
 
