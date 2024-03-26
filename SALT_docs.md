@@ -30,14 +30,12 @@ This guide provides step-by-step instructions for running the segmentation tool.
    git clone git@github.com:facebookresearch/segment-anything.git
    cd segment-anything; pip install -e .
    ```
-The following optional dependencies are necessary for mask post-processing, saving masks in COCO format, the example notebooks, and   exporting the model in ONNX format. jupyter is also required to run the example notebooks.
+   The following optional dependencies are necessary for mask post-processing, saving masks in COCO format, the example notebooks, and         exporting the model in ONNX format. jupyter is also required to run the example notebooks.
    ```bash
    pip install opencv-python pycocotools matplotlib onnxruntime onnx
    ```
 7.Download a model model [checkpointhttps](github.com/facebookresearch/segment-anything#model-checkpoints). Then the model can be used in just a few lines to get masks from a given prompt. The details and how to use it see [HERE](https://github.com/facebookresearch/segment-anything)
-
 8.(Optional) Install [coco-viewer](https://github.com/trsvchn/coco-viewer) to scroll through your annotations quickly.
-
 9.Setup your dataset in the following format <dataset_name>/images/* and create empty folder <dataset_name>/embeddings.
 Annotations will be saved in <dataset_name>/annotations.json by default.
 Copy the helpers scripts to the base folder of your segment-anything folder.
@@ -81,14 +79,16 @@ Call segment_anything_annotator.py with argument <dataset_name> and categories c
     ```
     This will segment the specified categories within the provided dataset path.
 ### Step 4: Use SALT quickly
-There are a few keybindings that make the annotation process fast.
-Click on the object using left clicks and right click (to indicate outside object boundary).
--n adds predicted mask into your annotations. (Add button)
--r rejects the predicted mask. (Reject button)
--a and d to cycle through images in your your set. (Next and Prev)
--l and k to increase and decrease the transparency of the other annotations.
--Ctrl + S to save progress to the COCO-style annotations file.
+There are a few keybindings that make the annotation process fast:  
+- Click on the object using left clicks and right click (to indicate outside object boundary).  
+- `n` adds predicted mask into your annotations. (Add button)  
+- `r` rejects the predicted mask. (Reject button)  
+- `a` and `d` to cycle through images in your set. (Next and Prev)  
+- `l` and `k` to increase and decrease the transparency of the other annotations.  
+- `Ctrl + S` to save progress to the COCO-style annotations file.  
 
-[coco-viewer](https://github.com/trsvchn/coco-viewer) to view your annotations.
+
+
+-[coco-viewer](https://github.com/trsvchn/coco-viewer) to view your annotations.
 python cocoviewer.py -i <dataset> -a <dataset>/annotations.json
 
