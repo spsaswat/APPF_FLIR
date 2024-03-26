@@ -77,6 +77,7 @@ This guide provides step-by-step instructions for running the segmentation tool.
     ```
     This will segment the specified categories within the provided dataset path.
 ### Step 4: Use SALT quickly
+Call segment_anything_annotator.py with argument <dataset_name> and categories cat1,cat2,cat3...
 There are a few keybindings that make the annotation process fast:  
 - Click on the object using left clicks and right click (to indicate outside object boundary).  
 - `n` adds predicted mask into your annotations. (Add button)  
@@ -84,9 +85,6 @@ There are a few keybindings that make the annotation process fast:
 - `a` and `d` to cycle through images in your set. (Next and Prev)  
 - `l` and `k` to increase and decrease the transparency of the other annotations.  
 - `Ctrl + S` to save progress to the COCO-style annotations file.  
-
-
-
--[coco-viewer](https://github.com/trsvchn/coco-viewer) to view your annotations.
+- [coco-viewer](https://github.com/trsvchn/coco-viewer) to view your annotations.
 python cocoviewer.py -i <dataset> -a <dataset>/annotations.json
 
