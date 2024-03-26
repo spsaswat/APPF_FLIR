@@ -44,6 +44,7 @@ This guide provides step-by-step instructions for running the segmentation tool.
 11. Copy the models in models folder.
 12. Symlink your dataset in the SALT's root folder as <dataset_name>.
 
+## Runing SALT
 ### Step 1: Extract Embeddings
 
 1. Navigate to the `salt-main` project directory in your terminal. If you've downloaded and extracted the project to `Downloads`, you can use the following command:
