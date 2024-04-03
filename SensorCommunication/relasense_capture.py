@@ -100,7 +100,7 @@ def save_intrinsics():
         json.dump(intrinsics_dict, outfile, indent=4)
 
 
-def capture_images(pipeline, total_images=20, delay=1):
+def capture_images(pipeline, total_images=10, delay=1):
     # Capture a specified number of images, pausing for a set time between captures
     for i in range(total_images):
         frames = pipeline.wait_for_frames()
@@ -133,5 +133,5 @@ align = rs.align(rs.stream.color) #Align depth frames to color frames
 # Sequentially execute starting the pipeline, saving intrinsics, capturing images, and stopping the pipeline
 start_pipeline()
 save_intrinsics()
-capture_images(pipeline, 20, 1)
+capture_images(pipeline, 10, 1)
 stop_pipeline()
