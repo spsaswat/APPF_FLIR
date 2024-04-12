@@ -140,6 +140,22 @@ def acquire_images(cam, nodemap, nodemap_tldevice):
             # Set integer value from entry node as new value of enumeration node
             node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
 
+            node_pixel_mode = PySpin.CEnumerationPtr(nodemap.GetNode("PixelFormat"))
+
+            if PySpin.IsAvailable(node_pixel_mode) and PySpin.IsWritable(node_pixel_mode):
+
+                # Retrieve the desired entry node from the enumeration node
+                node_pixel_mode_mono8 = PySpin.CEnumEntryPtr(node_pixel_mode.GetEntryByName("Mono8"))
+                if PySpin.IsAvailable(node_pixel_mode_mono8) and PySpin.IsReadable(node_pixel_mode_mono8):
+
+                    # Retrieve the integer value from the entry node
+                    pixel_mode_mono8 = node_pixel_mode_mono8.GetValue()
+
+                    # Set integer as new value for enumeration node
+                    node_pixel_mode.SetIntValue(pixel_mode_mono8)
+
+            print(PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat')).GetCurrentEntry().GetSymbolic())
+
             print('Acquisition mode set to continuous...')
 
             #  Begin acquiring images
@@ -228,6 +244,7 @@ def acquire_images(cam, nodemap, nodemap_tldevice):
                         #
                         #  When converting images, color processing algorithm is an
                         #  optional parameter.
+
                         image_converted = processor.Convert(image_result, PySpin.PixelFormat_Mono8)
 
                         # Create a unique filename
