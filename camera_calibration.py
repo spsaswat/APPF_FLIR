@@ -140,7 +140,7 @@ def detect_circles(image, dp, minDist, param1, param2, minRadius, maxRadius, x_m
             centers.append((x, y))
     return centers
 
-# 加载相机参数
+# load cameras parameters
 K_rgb, dist_coeffs_rgb = load_camera_parameters('SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/kd_intrinsics.txt')
 K_dc, dist_coeffs_dc = load_camera_parameters('SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/kdc_intrinsics.txt')
 
