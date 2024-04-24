@@ -48,22 +48,22 @@ def undistort_image(image, K, dist_coeffs):
     undistorted_img = undistorted_img[y:y+h, x:x+w]
     return undistorted_img
 
-def create_mask_for_color_range(image, lower_color, upper_color):
+
+def apply_x_coordinate_mask(image, x_min=435, x_max=960):
     """
-    Create a binary mask for a given color range in the HSV color space. This is often used for isolating
-    specific colors within an image for further processing, such as contour detection.
+    Apply a mask to an image, blacking out regions outside the specified x-coordinate range.
 
     Args:
-    image (ndarray): The image from which the mask will be created.
-    lower_color (array): The lower bound of the HSV range.
-    upper_color (array): The upper bound of the HSV range.
+    image (ndarray): The source image to mask.
+    x_min (int): The minimum x-coordinate for the visible region.
+    x_max (int): The maximum x-coordinate for the visible region.
 
     Returns:
-    ndarray: A binary mask.
+    ndarray: The masked image.
     """
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
-    return color_mask
+    mask = np.zeros_like(image)
+    mask[:, x_min:x_max] = 255
+    return cv2.bitwise_and(image, mask)
 
 def remove_outliers(data, max_diff=10):
     """
@@ -148,19 +148,8 @@ K_dc, dist_coeffs_dc = load_camera_parameters('SensorCommunication/Acquisition/c
 rgb_image_path = 'SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/rgb_000001.png'
 rgb_image = cv2.imread(rgb_image_path)
 rgb_image = undistort_image(rgb_image, K_rgb, dist_coeffs_rgb)
-lower_blue = np.array([100, 150, 50])
-upper_blue = np.array([140, 255, 255])
-blue_mask = create_mask_for_color_range(rgb_image, lower_blue, upper_blue)
-contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-box_contour = max(contours, key=cv2.contourArea) if contours else None
+masked_rgb_image = apply_x_coordinate_mask(rgb_image)
 
-if box_contour is not None:
-    mask = np.zeros_like(rgb_image)
-    cv2.drawContours(mask, [box_contour], 0, (255, 255, 255), -1)
-    masked_rgb_image = cv2.bitwise_and(rgb_image, mask)
-else:
-    masked_rgb_image = rgb_image
-    #print("No blue box contour found.")
 
 blurred_rgb_image = cv2.GaussianBlur(masked_rgb_image, (5, 5), 0)
 rgb_circle_centers = detect_circles(blurred_rgb_image, dp=1, minDist=30, param1=50, param2=25, minRadius=10, maxRadius=30, x_min=590, x_max=810, y_min=0, y_max=600, remove_outliers_flag=True)
@@ -272,5 +261,41 @@ matches = {
 transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix.reshape(-1, 2), sorted_dc_matrix.reshape(-1, 2), matches)
 print("Transformation Matrix:\n", transformation_matrix)
 # Apply the computed transformation to align the DC image with the RGB image.
-aligned_dc_image = apply_transformation(dc_image, transformation_matrix, (rgb_image.shape[1], rgb_image.shape[0]))
-cv2.imwrite('SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/aligned_dc_image.png', aligned_dc_image)
+aligned_dc_image_path = apply_transformation(dc_image, transformation_matrix, (rgb_image.shape[1], rgb_image.shape[0]))
+cv2.imwrite('SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/aligned_dc_image.png', aligned_dc_image_path)
+
+def adjust_rgb_to_dc_visible_area(rgb_path, dc_path, output_path):
+    """
+    Adjust the RGB image to match the visible area of the DC image.
+
+    Args:
+    rgb_path (str): Path to the RGB image.
+    dc_path (str): Path to the DC image.
+    output_path (str): Path to save the adjusted RGB image.
+    """
+    # Load the RGB and DC images
+    rgb_image = cv2.imread(rgb_path)
+    dc_image = cv2.imread(dc_path, cv2.IMREAD_GRAYSCALE)
+
+    # Threshold the DC image to create a mask of the visible area
+    _, dc_mask = cv2.threshold(dc_image, 1, 255, cv2.THRESH_BINARY)
+    # Find contours in the mask
+    contours, _ = cv2.findContours(dc_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Assume the largest contour is the visible area
+    visible_contour = max(contours, key=cv2.contourArea)
+    # Get the bounding rectangle of the visible contour
+    x, y, w, h = cv2.boundingRect(visible_contour)
+    # Create a black mask with the same dimensions as the RGB image
+    black_mask = np.zeros_like(rgb_image)
+    # Define the visible area on the black mask based on the bounding rectangle
+    black_mask[y:y+h, x:x+w] = rgb_image[y:y+h, x:x+w]
+    # Save the adjusted RGB image with the black mask applied
+    cv2.imwrite(output_path, black_mask)
+
+# Use the function after aligning the DC image, in order to make the visualization area of the rgb image consistent with the dc image
+aligned_dc_image_path = 'SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/aligned_dc_image.png'
+aligned_rgb_image_path = 'SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/aligned_rgb_image.png'
+rgb_image_path = 'SensorCommunication/Acquisition/calib_data/test_plant_20240412161903/detected_rgb.png'
+# Call the function with the appropriate file paths
+adjust_rgb_to_dc_visible_area(rgb_image_path, aligned_dc_image_path, aligned_rgb_image_path)
+
