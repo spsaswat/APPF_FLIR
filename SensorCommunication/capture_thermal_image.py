@@ -30,6 +30,7 @@ class StreamMode:
 
 CHOSEN_STREAMMODE = StreamMode.STREAM_MODE_TELEDYNE_GIGE_VISION
 NUM_IMAGES =   20 # number of images to grab
+pos = 2
 
 def set_stream_mode(cam):
     """
@@ -80,7 +81,7 @@ def set_stream_mode(cam):
     print('Stream Mode set to %s...' % node_stream_mode.GetCurrentEntry().GetSymbolic())
     return result
 
-def acquire_images(cam, nodemap, nodemap_tldevice):
+def acquire_images(cam, nodemap, nodemap_tldevice, pos):
     """
     This function acquires and saves n images from a device.
 
@@ -249,9 +250,9 @@ def acquire_images(cam, nodemap, nodemap_tldevice):
 
                         # Create a unique filename
                         if device_serial_number:
-                            filename = 'Acquisition-%s-%d.jpg' % (device_serial_number, i)
+                            filename = 'Acquisition-%s-%d.jpg' % (device_serial_number, pos)
                         else:  # if serial number is empty
-                            filename = 'Acquisition-%d.jpg' % i
+                            filename = 'Acquisition-%d.jpg' % pos
 
                         # Create the base directory 'Acquisition' if it does not exist
                         base_dir = 'Acquisition'
@@ -352,7 +353,7 @@ def print_device_info(nodemap):
     return result
 
 
-def run_single_camera(cam):
+def run_single_camera(cam, pos):
     """
     This function acts as the body of the example; please see NodeMapInfo example
     for more in-depth comments on setting up cameras.
@@ -380,7 +381,7 @@ def run_single_camera(cam):
         result &= set_stream_mode(cam)
 
         # Acquire images
-        result &= acquire_images(cam, nodemap, nodemap_tldevice)
+        result &= acquire_images(cam, nodemap, nodemap_tldevice, pos)
 
         # Deinitialize camera
         cam.DeInit()
@@ -448,7 +449,7 @@ def main():
 
         print('Running example for camera %d...' % i)
 
-        result &= run_single_camera(cam)
+        result &= run_single_camera(cam, pos)
         print('Camera %d example complete... \n' % i)
 
     # Release reference to camera
