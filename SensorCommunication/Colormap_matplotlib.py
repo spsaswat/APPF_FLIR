@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
-from PIL import Image
+from PIL import Image, ImageFilter
 from matplotlib.colors import LinearSegmentedColormap
 
 """
@@ -28,7 +28,12 @@ def apply_inferno_colormap(image_path, save_path):
     """
     try:
         # Read the image from the provided path
-        image = mpimg.imread(image_path)
+        # image = mpimg.imread(image_path)
+        image = Image.open(image_path)
+
+        image = image.filter(ImageFilter.MinFilter(3))
+        image = image.filter(ImageFilter.MinFilter(3))
+        image = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
 
         # Create a figure and axis for the image
         fig, ax = plt.subplots()
@@ -131,7 +136,7 @@ def process_directory(directory, colormap_choice):
 
 
 # Base directory and file pattern
-base_dir = 'SensorCommunication/Acquisition/20240310-132157'
+base_dir = 'Acquisition/techlauncher_automated/Acquisition/20240426-112514/'
 
 # Prompt user for colormap choice
 colormap_choice = input("Enter 'inferno' to use the standard colormap or 'custom' to use a custom colormap: ")
