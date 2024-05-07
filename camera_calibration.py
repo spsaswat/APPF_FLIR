@@ -146,6 +146,7 @@ def detect_circles(image, dp, minDist, param1, param2, minRadius, maxRadius, x_m
             centers.append((x, y))
     return centers
 
+
 def sort_centers(centers):
     """
     Sorts the centers of detected features (e.g., circles) within an image. Sorting is primarily based on the y-coordinate
@@ -218,6 +219,100 @@ matches = {
     9: 12, 10: 9, 11: 6, 12: 3
 }
 
+def process_and_flatten_points(points, y_tolerance=10):
+    '''
+    Process and sort the circle centers first by their y-coordinates (within a tolerance) and then by their x-coordinates
+    to facilitate accurate matching and error calculation between two sets of points.
+    Mainly used to calculate the error. Since the center array is in disorder, it needs to be sorted according to specific 
+    rules so that they can correspond one to one.
+    
+    Parameters:
+        points (list of tuples): The list of circle centers as (x, y) tuples.
+        y_tolerance (int): The tolerance in pixels within which points are considered to be on the same horizontal level.
+    
+    Returns:
+        list: A flattened list of points sorted within grouped y levels and then by x coordinates.
+    '''
+
+    # Grouping: Group by y coordinate, and tolerate small changes in the y coordinate within the same group
+    def group_points_by_y(points, y_tolerance):
+        '''
+        Group points based on their y-coordinate with a specified tolerance, acknowledging slight variations in alignment.
+        
+        Parameters:
+            points (list of tuples): List of points to group.
+            y_tolerance (int): Tolerance for grouping points by their y-coordinate.
+        
+        Returns:
+            list of lists: Grouped points based on y-coordinate.
+        '''
+        if not points:
+            return []
+        # Sort all points by y coordinate
+        sorted_points = sorted(points, key=lambda x: x[1])
+        # Initialize grouping
+        groups = []
+        current_group = [sorted_points[0]]  # Start the first group with the first point
+        for point in sorted_points[1:]:
+            if abs(point[1] - current_group[-1][1]) <= y_tolerance:
+                # If the y coordinate of the current point is similar to the y coordinate of the last point in the current group, add it to the current group.
+                current_group.append(point)
+            else:
+                # Otherwise, start a new group
+                groups.append(current_group)
+                current_group = [point]
+        # Add the last group
+        if current_group:
+            groups.append(current_group)
+        return groups
+
+    # Sort the points in each group by x coordinate
+    def sort_groups_by_x(groups):
+        '''
+        Sort each group of points by their x-coordinate.
+        
+        Parameters:
+            groups (list of lists): Groups of points to sort by x-coordinate.
+        
+        Returns:
+            list of lists: Groups of points sorted by x-coordinate.
+        '''
+        return [sorted(group, key=lambda x: x[0]) for group in groups]
+
+    # Group the input points
+    grouped_points = group_points_by_y(points, y_tolerance)
+    # Sort the points in each group by x coordinate
+    sorted_grouped_points = sort_groups_by_x(grouped_points)
+    # Flatten the list
+    flattened_list = [point for group in sorted_grouped_points for point in group]
+    return flattened_list
+
+def calculate_alignment_error(sorted_rgb_centers, sorted_dc_centers):
+    """
+    Calculate the alignment error between sorted RGB and DC circle centers using Euclidean distance.
+    
+    Parameters:
+        sorted_rgb_centers (list of tuples): Sorted list of RGB circle centers.
+        sorted_dc_centers (list of tuples): Sorted list of DC circle centers.
+        
+    Returns:
+        float: Average alignment error in pixels.
+    """
+    if len(sorted_rgb_centers) != len(sorted_dc_centers):
+        raise ValueError("The number of centers in both lists must be the same to calculate alignment error.")
+
+    errors = []
+    for (x1, y1), (x2, y2) in zip(sorted_rgb_centers, sorted_dc_centers):
+        # Convert to float to avoid overflow
+        dx = np.float32(x2) - np.float32(x1)
+        dy = np.float32(y2) - np.float32(y1)
+        distance = np.sqrt(dx**2 + dy**2)
+        errors.append(distance)
+
+    # Calculate average error
+    average_error = np.mean(errors)
+    return average_error
+
 def adjust_rgb_to_dc_visible_area(rgb_path, dc_path, output_path):
     """
     Adjust the RGB image to match the visible area of the DC image.
@@ -269,35 +364,39 @@ def process_images(base_path, folder_name):
     K_dc, dist_coeffs_dc = load_camera_parameters(os.path.join(folder_path, 'kdc_intrinsics.txt'))
 
     # Variables to store circle centers from different images
-    rgb_circle_centers = None
-    dc_circle_centers = None
+    rgb_circle_centers = []
+    dc_circle_centers = []
+
+    # Stores aligned RGB and DC image circle centers for calibration error calculation
+    aligned_rgb_circle_centers = []
+    aligned_dc_circle_centers = [] 
 
     # Process RGB and DC images, and store detected images' names
-    detected_rgb_filename = None
+    detected_rgb_filename = []
     detected_dc_filenames = []
 
     # Process each image file within the directory
     for file_name in os.listdir(folder_path):
+        image_path = os.path.join(folder_path, file_name)
         if file_name.startswith('rgb') and file_name.endswith('.png'):
             # Load and process RGB images
-            image_path = os.path.join(folder_path, file_name)
-            image = cv2.imread(image_path)
-            image = undistort_image(image, K_rgb, dist_coeffs_rgb)
-            masked_image = apply_x_coordinate_mask(image)
+            rgb_image = cv2.imread(image_path)
+            rgb_image = undistort_image(rgb_image, K_rgb, dist_coeffs_rgb)
+            masked_image = apply_x_coordinate_mask(rgb_image)
             rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=25, minRadius=10, maxRadius=30, x_min=590, x_max=810, y_min=0, y_max=600, remove_outliers_flag=True)
             detected_rgb_filename = 'detected_' + file_name
             cv2.imwrite(os.path.join(folder_path, detected_rgb_filename), masked_image)
 
         elif file_name.startswith('DC') and file_name.endswith('.jpg'):
             # Load and process DC images
-            image_path = os.path.join(folder_path, file_name)
-            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            image = undistort_image(image, K_dc, dist_coeffs_dc)
-            dc_circle_centers = detect_circles(image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=0, x_max=1000, y_min=120, y_max=400, remove_outliers_flag=False)
+            dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
+            dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=0, x_max=1000, y_min=120, y_max=400, remove_outliers_flag=False)
             detected_dc_filename = 'detected_' + file_name
             detected_dc_filenames.append(detected_dc_filename)
-            cv2.imwrite(os.path.join(folder_path, detected_dc_filename), image)
-            print(dc_circle_centers)
+            cv2.imwrite(os.path.join(folder_path, detected_dc_filename), dc_image)
+            
+            #print(dc_circle_centers)
 
     # Process for transformation and alignment
     if rgb_circle_centers is not None and dc_circle_centers is not None:
@@ -307,16 +406,10 @@ def process_images(base_path, folder_name):
         sorted_dc_centers = sort_centers(np.array(dc_circle_centers))
         sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers.reshape(3, 4, 2))
 
-        # Define correspondences and compute transformation matrix
-        matches = {
-            1: 10, 2: 7, 3: 4, 4: 1,
-            5: 11, 6: 8, 7: 5, 8: 2,
-            9: 12, 10: 9, 11: 6, 12: 3
-        }
         # Match features between RGB and DC images and compute the transformation matrix
         transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix.reshape(-1, 2), sorted_dc_matrix.reshape(-1, 2), matches)
         print("Transformation Matrix:\n", transformation_matrix)
-        
+
         # Apply the computed transformation to align the DC images
         for detected_dc_filename in detected_dc_filenames:
             dc_image_path = os.path.join(folder_path, detected_dc_filename)
@@ -324,17 +417,36 @@ def process_images(base_path, folder_name):
             aligned_dc_image = apply_transformation(dc_image, transformation_matrix, (masked_image.shape[1], masked_image.shape[0]))
             aligned_dc_image_path = os.path.join(folder_path, 'aligned_' + detected_dc_filename)
             cv2.imwrite(aligned_dc_image_path, aligned_dc_image)
-
+            # Store circle centers to calculate the error
+            aligned_dc_circles = detect_circles(aligned_dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=590, x_max=810, y_min=0, y_max=1000, remove_outliers_flag=False)
+            aligned_dc_circle_centers.extend([(x, y) for x, y in aligned_dc_circles]) 
+            
             # Adjust RGB image to match the visible area of the DC image
             if detected_rgb_filename:
                 detected_rgb_image_path = os.path.join(folder_path, detected_rgb_filename)
-                adjusted_rgb_image_path = os.path.join(folder_path, 'aligned_' + detected_rgb_filename)
-                adjust_rgb_to_dc_visible_area(detected_rgb_image_path, aligned_dc_image_path, adjusted_rgb_image_path)
+                aligned_rgb_image_path = os.path.join(folder_path, 'aligned_' + detected_rgb_filename)
+                adjust_rgb_to_dc_visible_area(detected_rgb_image_path, aligned_dc_image_path, aligned_rgb_image_path)
+
+
+            #print(rgb_circle_centers)
+            #print(aligned_dc_circle_centers)
+
+        # Sort both lists by X and Y coordinates using the predefined function
+        sorted_rgb_circle_centers =process_and_flatten_points(rgb_circle_centers,y_tolerance = 10)
+        sorted_aligned_dc_centers =process_and_flatten_points(aligned_dc_circle_centers, y_tolerance=10)
+
+        #print("Aligned RGB Centers:",sorted_rgb_circle_centers)
+        #print("Aligned DC Centers:",sorted_aligned_dc_centers)
+        
+        
+         # Calculate the alignment error using the defined function
+        alignment_error = calculate_alignment_error(sorted_rgb_circle_centers, sorted_aligned_dc_centers)
+        print("Alignment Error: {:.2f} pixels".format(alignment_error))
 
 
 if __name__ == "__main__":
     base_path = 'SensorCommunication/Acquisition/calib_data'
-    #folder_name ='test_plant_20240412161357'
-    print("Enter the folder name (e.g., test_plant_20240412161357):")
+    #folder_name ='test_plant_20240412161903'
+    print("Enter the folder name (e.g., test_plant_20240412161903):")
     folder_name = input()  # Get folder name from user input
     process_images(base_path, folder_name)
