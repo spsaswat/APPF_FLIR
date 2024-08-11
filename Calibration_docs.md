@@ -11,14 +11,22 @@ To run this calibration script, the following software and libraries are require
 ### Step 1: Install Python
 - **Python 3.8 or higher**: It is recommended to use Python 3.8 or newer to ensure compatibility with all dependencies. 
 - You can download and install Python from [the official Python website](https://www.python.org/downloads/) or, for an easier management of packages and environments, use [Anaconda](https://www.anaconda.com/products/individual), which comes with most of the necessary scientific libraries pre-installed.
-### Step 2: Set Up a Virtual Environment (Optional)
-- **Using Conda**:
+### Step 2: Set Up a Python Environment (Optional)
+- **Creating by Conda**:
   If you are using Anaconda, setting up a virtual environment is highly recommended to avoid conflicts between project dependencies. You can create a conda environment with the following command:
   ```bash
   conda create --n calibration python=3.8
-  conda activate calibration
+- **Using Conda**:
+  After created the new conda environment, you can use the following command to activate the conda environment:
+    ```bash
+    conda activate calibration
+
+- **Quitting Conda**:
+    You can use the following command to quit the conda environment and go back to the base environment 
+    ```bash
+    conda deactivate
 ### Step 3: Install Required Packages
-- **Install Necessary Libraries**: You can install the required libraries using pip. Run the following commands to install OpenCV and NumPy:
+- **Install Necessary Libraries**: You can install the required libraries using pip. Run the following commands to install OpenCV and NumPy in you created calibration python environment:
   ```bash
   pip install numpy
   pip install opencv-python
