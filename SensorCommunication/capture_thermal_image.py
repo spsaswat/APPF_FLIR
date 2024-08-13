@@ -464,7 +464,7 @@ def main():
     # Release system instance
     system.ReleaseInstance()
 
-    input('Done! Press Enter to exit...')
+    # input('Done! Press Enter to exit...')
     return result
 
 if __name__ == '__main__':
