@@ -250,9 +250,9 @@ def acquire_images(cam, nodemap, nodemap_tldevice, pos):
 
                         # Create a unique filename
                         if device_serial_number:
-                            filename = 'Acquisition-%s-%d.jpg' % (device_serial_number, pos)
+                            filename = 'Acquisition-%s-%d.tiff' % (device_serial_number, pos)
                         else:  # if serial number is empty
-                            filename = 'Acquisition-%d.jpg' % pos
+                            filename = 'Acquisition-%d.tiff' % pos
 
                         # Create the base directory 'Acquisition' if it does not exist
                         base_dir = 'Acquisition'
