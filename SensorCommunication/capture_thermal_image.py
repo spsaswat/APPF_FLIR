@@ -146,14 +146,14 @@ def acquire_images(cam, nodemap, nodemap_tldevice, pos):
             if PySpin.IsAvailable(node_pixel_mode) and PySpin.IsWritable(node_pixel_mode):
 
                 # Retrieve the desired entry node from the enumeration node
-                node_pixel_mode_mono8 = PySpin.CEnumEntryPtr(node_pixel_mode.GetEntryByName("Mono8"))
-                if PySpin.IsAvailable(node_pixel_mode_mono8) and PySpin.IsReadable(node_pixel_mode_mono8):
+                node_pixel_mode_mono16 = PySpin.CEnumEntryPtr(node_pixel_mode.GetEntryByName("Mono16"))
+                if PySpin.IsAvailable(node_pixel_mode_mono16) and PySpin.IsReadable(node_pixel_mode_mono16):
 
                     # Retrieve the integer value from the entry node
-                    pixel_mode_mono8 = node_pixel_mode_mono8.GetValue()
+                    pixel_mode_mono16 = node_pixel_mode_mono16.GetValue()
 
                     # Set integer as new value for enumeration node
-                    node_pixel_mode.SetIntValue(pixel_mode_mono8)
+                    node_pixel_mode.SetIntValue(pixel_mode_mono16)
 
             print(PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat')).GetCurrentEntry().GetSymbolic())
 
@@ -235,7 +235,7 @@ def acquire_images(cam, nodemap, nodemap_tldevice, pos):
                         height = image_result.GetHeight()
                         print('Grabbed Image %d, width = %d, height = %d' % (i, width, height))
 
-                        #  Convert image to mono 8
+                        #  Convert image to mono 16
                         #
                         #  *** NOTES ***
                         #  Images can be converted between pixel formats by using
@@ -246,7 +246,7 @@ def acquire_images(cam, nodemap, nodemap_tldevice, pos):
                         #  When converting images, color processing algorithm is an
                         #  optional parameter.
 
-                        image_converted = processor.Convert(image_result, PySpin.PixelFormat_Mono8)
+                        image_converted = processor.Convert(image_result, PySpin.PixelFormat_Mono16)
 
                         # Create a unique filename
                         if device_serial_number:
