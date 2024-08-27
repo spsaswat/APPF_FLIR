@@ -436,7 +436,7 @@ def process_images(base_path, folder_name):
             detected_rgb_filename = 'detected_' + file_name
             cv2.imwrite(os.path.join(folder_path, detected_rgb_filename), masked_image)
 
-        elif file_name.startswith('DC') and file_name.endswith('.jpg'):
+        elif file_name.startswith('DC') and file_name.endswith('.tiff'):
             # Load and process DC images
             dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
@@ -478,6 +478,7 @@ def process_images(base_path, folder_name):
 
 
             #print(rgb_circle_centers)
+
             #print(aligned_dc_circle_centers)
 
         # Sort both lists by X and Y coordinates using the predefined function
@@ -494,7 +495,7 @@ def process_images(base_path, folder_name):
 
 
 if __name__ == "__main__":
-    base_path = 'SensorCommunication/Acquisition/calib_data_3/'
+    base_path = 'SensorCommunication/Acquisition/calib_data_2/calib_data_2/'
     #folder_name ='test_plant_20240412161903'
     print("Enter the folder name (e.g., test_plant_20240412161903):")
     folder_name = input()  # Get folder name from user input
