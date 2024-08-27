@@ -35,6 +35,27 @@ def load_camera_parameters(file_path):
     dist_coeffs = np.array(data['dist'])
     return K, dist_coeffs
 
+def rotate_image_90_degrees(image_path, output_path):
+    """
+    Rotates a 16-bit image by 90 degrees clockwise and saves the result.
+
+    Args:
+    image_path (str): The path to the input image file.
+    output_path (str): The path to save the rotated image.
+    """
+    # Load the image in unchanged mode to preserve the 16-bit depth
+    image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    
+    # Check if the image is loaded correctly
+    if image is None:
+        raise ValueError(f"Image at path {image_path} could not be loaded.")
+
+    # Rotate the image 90 degrees clockwise
+    rotated_image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+    
+    # Save the rotated image
+    cv2.imwrite(output_path, rotated_image)
+
 def undistort_image(image, K, dist_coeffs):
     """
     Apply distortion correction to an image using the camera intrinsic parameters.
@@ -438,9 +459,10 @@ def process_images(base_path, folder_name):
 
         elif file_name.startswith('DC') and file_name.endswith('.tiff'):
             # Load and process DC images
+            #rotate_image_90_degrees(image_path,image_path)
             dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
-            dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=0, x_max=1000, y_min=120, y_max=400, remove_outliers_flag=False)
+            dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=120, x_max=360, y_min=100, y_max=500, remove_outliers_flag=False)
             detected_dc_filename = 'detected_' + file_name
             detected_dc_filenames.append(detected_dc_filename)
             cv2.imwrite(os.path.join(folder_path, detected_dc_filename), dc_image)
@@ -451,9 +473,12 @@ def process_images(base_path, folder_name):
     if rgb_circle_centers and dc_circle_centers:
         sorted_rgb_centers = sort_centers(np.array(rgb_circle_centers))
         sorted_rgb_matrix = sort_matrix_rows_by_x(sorted_rgb_centers)
+        print(sorted_rgb_matrix)
+        print("----------")
 
         sorted_dc_centers = sort_centers(np.array(dc_circle_centers))
         sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers)
+        print(sorted_dc_matrix)
 
         # Match features between RGB and DC images and compute the transformation matrix
         transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix, sorted_dc_matrix)
@@ -462,8 +487,14 @@ def process_images(base_path, folder_name):
         # Apply the computed transformation to align the DC images
         for detected_dc_filename in detected_dc_filenames:
             dc_image_path = os.path.join(folder_path, detected_dc_filename)
+            #print("----------")
+            #print(dc_image_path)
             dc_image = cv2.imread(dc_image_path, cv2.IMREAD_GRAYSCALE)
+            #print("----------")
+            #print(masked_image.shape[1], masked_image.shape[0])
+            #print(dc_image.shape[1], dc_image.shape[0])
             aligned_dc_image = apply_transformation(dc_image, transformation_matrix, (masked_image.shape[1], masked_image.shape[0]))
+            print()
             aligned_dc_image_path = os.path.join(folder_path, 'aligned_' + detected_dc_filename)
             cv2.imwrite(aligned_dc_image_path, aligned_dc_image)
             # Store circle centers to calculate the error
@@ -485,8 +516,9 @@ def process_images(base_path, folder_name):
         sorted_rgb_circle_centers =process_and_flatten_points(rgb_circle_centers,y_tolerance = 10)
         sorted_aligned_dc_centers =process_and_flatten_points(aligned_dc_circle_centers, y_tolerance=10)
 
-        #print("Aligned RGB Centers:",sorted_rgb_circle_centers)
-        #print("Aligned DC Centers:",sorted_aligned_dc_centers)
+        print("Aligned RGB Centers:",sorted_rgb_circle_centers)
+        print("Aligned DC Centers:",sorted_aligned_dc_centers)
+        print("---------------------------")
         
         
          # Calculate the alignment error using the defined function
