@@ -341,6 +341,56 @@ def adjust_rgb_to_dc_visible_area(rgb_path, dc_path, output_path):
     # Save the adjusted RGB image with the black mask applied
     cv2.imwrite(output_path, black_mask)
 
+def sort_matrix_rows_by_x(centers):
+    """
+    Sorts the centers by y-coordinate first, then by x-coordinate within each row.
+    
+    Args:
+    centers (ndarray): Array of circle centers.
+
+    Returns:
+    ndarray: The sorted array of centers.
+    """
+    # Sort by y-coordinate
+    sorted_centers = centers[np.argsort(centers[:, 1])]
+    
+    # Determine the number of rows (assuming relatively consistent y-coordinates within each row)
+    y_coords = sorted_centers[:, 1]
+    y_diffs = np.diff(y_coords)
+    row_indices = np.where(y_diffs > np.mean(y_diffs))[0] + 1
+    row_indices = np.insert(row_indices, 0, 0)
+    row_indices = np.append(row_indices, len(sorted_centers))
+    
+    # Sort each row by x-coordinate
+    sorted_matrix = []
+    for i in range(len(row_indices) - 1):
+        row = sorted_centers[row_indices[i]:row_indices[i+1]]
+        sorted_row = row[np.argsort(row[:, 0])]
+        sorted_matrix.append(sorted_row)
+    
+    return np.vstack(sorted_matrix)
+
+def compute_transformation_matrix(rgb_centers, dc_centers):
+    """
+    Compute a transformation matrix from source points to destination points using homography.
+
+    Args:
+    rgb_centers (ndarray): Array of circle centers in the RGB image.
+    dc_centers (ndarray): Array of circle centers in the DC image.
+
+    Returns:
+    ndarray: The computed transformation matrix.
+    """
+    # Ensure we have the same number of points in both sets
+    num_points = min(len(rgb_centers), len(dc_centers))
+    src_pts = dc_centers[:num_points].reshape(-1, 1, 2)
+    dst_pts = rgb_centers[:num_points].reshape(-1, 1, 2)
+
+    # Calculate transformation matrix
+    matrix, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+    return matrix
+
+
 def process_images(base_path, folder_name):
     """
     Main processing function to handle the alignment of RGB and DC images based on predefined workflows. It performs
@@ -358,7 +408,6 @@ def process_images(base_path, folder_name):
     This function orchestrates the workflow by calling other specialized functions for image processing tasks, ensuring
     that images are processed in an order that respects dependencies between operations (e.g., distortion correction before feature detection).
     """
-        
     folder_path = os.path.join(base_path, folder_name)
     K_rgb, dist_coeffs_rgb = load_camera_parameters(os.path.join(folder_path, 'kd_intrinsics.txt'))
     K_dc, dist_coeffs_dc = load_camera_parameters(os.path.join(folder_path, 'kdc_intrinsics.txt'))
@@ -383,7 +432,7 @@ def process_images(base_path, folder_name):
             rgb_image = cv2.imread(image_path)
             rgb_image = undistort_image(rgb_image, K_rgb, dist_coeffs_rgb)
             masked_image = apply_x_coordinate_mask(rgb_image)
-            rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=25, minRadius=10, maxRadius=30, x_min=590, x_max=810, y_min=0, y_max=600, remove_outliers_flag=True)
+            rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=25, minRadius=10, maxRadius=30, x_min=620, x_max=850, y_min=200, y_max=530, remove_outliers_flag=True)
             detected_rgb_filename = 'detected_' + file_name
             cv2.imwrite(os.path.join(folder_path, detected_rgb_filename), masked_image)
 
@@ -399,15 +448,15 @@ def process_images(base_path, folder_name):
             #print(dc_circle_centers)
 
     # Process for transformation and alignment
-    if rgb_circle_centers is not None and dc_circle_centers is not None:
+    if rgb_circle_centers and dc_circle_centers:
         sorted_rgb_centers = sort_centers(np.array(rgb_circle_centers))
-        sorted_rgb_matrix = sort_matrix_rows_by_x(sorted_rgb_centers.reshape(4, 3, 2))
+        sorted_rgb_matrix = sort_matrix_rows_by_x(sorted_rgb_centers)
 
         sorted_dc_centers = sort_centers(np.array(dc_circle_centers))
-        sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers.reshape(3, 4, 2))
+        sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers)
 
         # Match features between RGB and DC images and compute the transformation matrix
-        transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix.reshape(-1, 2), sorted_dc_matrix.reshape(-1, 2), matches)
+        transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix, sorted_dc_matrix)
         print("Transformation Matrix:\n", transformation_matrix)
 
         # Apply the computed transformation to align the DC images
@@ -445,7 +494,7 @@ def process_images(base_path, folder_name):
 
 
 if __name__ == "__main__":
-    base_path = 'SensorCommunication/Acquisition/calib_data'
+    base_path = 'SensorCommunication/Acquisition/calib_data_3/'
     #folder_name ='test_plant_20240412161903'
     print("Enter the folder name (e.g., test_plant_20240412161903):")
     folder_name = input()  # Get folder name from user input
