@@ -480,6 +480,8 @@ def process_images(base_path, folder_name):
         sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers)
         print(sorted_dc_matrix)
 
+
+
         # Match features between RGB and DC images and compute the transformation matrix
         transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix, sorted_dc_matrix)
         print("Transformation Matrix:\n", transformation_matrix)
