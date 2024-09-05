@@ -442,7 +442,7 @@ def process_images(base_path, folder_name):
     aligned_dc_circle_centers = [] 
 
     # Process RGB and DC images, and store detected images' names
-    detected_rgb_filename = []
+    detected_rgb_filenames = []
     detected_dc_filenames = []
 
     # Process each image file within the directory
@@ -453,8 +453,9 @@ def process_images(base_path, folder_name):
             rgb_image = cv2.imread(image_path)
             rgb_image = undistort_image(rgb_image, K_rgb, dist_coeffs_rgb)
             masked_image = apply_x_coordinate_mask(rgb_image)
-            rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=25, minRadius=10, maxRadius=30, x_min=620, x_max=850, y_min=200, y_max=530, remove_outliers_flag=True)
+            rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=620, x_max=850, y_min=200, y_max=530, remove_outliers_flag=True)
             detected_rgb_filename = 'detected_' + file_name
+            detected_rgb_filenames.append(detected_rgb_filename)
             cv2.imwrite(os.path.join(folder_path, detected_rgb_filename), masked_image)
 
         elif file_name.startswith('DC') and file_name.endswith('.tiff'):
@@ -462,12 +463,14 @@ def process_images(base_path, folder_name):
             #rotate_image_90_degrees(image_path,image_path)
             dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
-            dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=120, x_max=360, y_min=100, y_max=500, remove_outliers_flag=False)
+            dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=26, minRadius=10, maxRadius=30, x_min=120, x_max=360, y_min=100, y_max=500, remove_outliers_flag=False)
             detected_dc_filename = 'detected_' + file_name
             detected_dc_filenames.append(detected_dc_filename)
             cv2.imwrite(os.path.join(folder_path, detected_dc_filename), dc_image)
             
             #print(dc_circle_centers)
+    detected_rgb_filenames = sorted(detected_rgb_filenames)
+    detected_dc_filenames = sorted(detected_dc_filenames)
 
     # Process for transformation and alignment
     if rgb_circle_centers and dc_circle_centers:
@@ -487,7 +490,7 @@ def process_images(base_path, folder_name):
         print("Transformation Matrix:\n", transformation_matrix)
 
         # Apply the computed transformation to align the DC images
-        for detected_dc_filename in detected_dc_filenames:
+        for detected_dc_filename, detected_rgb_filename in zip(detected_dc_filenames, detected_rgb_filenames):
             dc_image_path = os.path.join(folder_path, detected_dc_filename)
             #print("----------")
             #print(dc_image_path)
@@ -499,15 +502,17 @@ def process_images(base_path, folder_name):
             print()
             aligned_dc_image_path = os.path.join(folder_path, 'aligned_' + detected_dc_filename)
             cv2.imwrite(aligned_dc_image_path, aligned_dc_image)
+
             # Store circle centers to calculate the error
             aligned_dc_circles = detect_circles(aligned_dc_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=590, x_max=810, y_min=0, y_max=1000, remove_outliers_flag=False)
             aligned_dc_circle_centers.extend([(x, y) for x, y in aligned_dc_circles]) 
             
             # Adjust RGB image to match the visible area of the DC image
-            if detected_rgb_filename:
-                detected_rgb_image_path = os.path.join(folder_path, detected_rgb_filename)
-                aligned_rgb_image_path = os.path.join(folder_path, 'aligned_' + detected_rgb_filename)
-                adjust_rgb_to_dc_visible_area(detected_rgb_image_path, aligned_dc_image_path, aligned_rgb_image_path)
+            #if detected_rgb_filename:
+            detected_rgb_image_path = os.path.join(folder_path, detected_rgb_filename)
+            aligned_rgb_image_path = os.path.join(folder_path, 'aligned_' + detected_rgb_filename)
+
+            adjust_rgb_to_dc_visible_area(detected_rgb_image_path, aligned_dc_image_path, aligned_rgb_image_path)
 
 
             #print(rgb_circle_centers)
@@ -517,7 +522,7 @@ def process_images(base_path, folder_name):
         # Sort both lists by X and Y coordinates using the predefined function
         sorted_rgb_circle_centers =process_and_flatten_points(rgb_circle_centers,y_tolerance = 10)
         sorted_aligned_dc_centers =process_and_flatten_points(aligned_dc_circle_centers, y_tolerance=10)
-
+        print(image_path)
         print("Aligned RGB Centers:",sorted_rgb_circle_centers)
         print("Aligned DC Centers:",sorted_aligned_dc_centers)
         print("---------------------------")
@@ -529,7 +534,7 @@ def process_images(base_path, folder_name):
 
 
 if __name__ == "__main__":
-    base_path = 'SensorCommunication/Acquisition/calib_data_2/calib_data_2/'
+    base_path = 'SensorCommunication/Acquisition/batch_1'
     #folder_name ='test_plant_20240412161903'
     print("Enter the folder name (e.g., test_plant_20240412161903):")
     folder_name = input()  # Get folder name from user input
