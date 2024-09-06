@@ -72,7 +72,7 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
             if image is None:
                 print(f"Failed to load image: {image_path}")
                 continue
-
+            print(suffix)
             transformation_matrix = load_transformation_matrix(transformation_folder, suffix)
             if transformation_matrix is None:
                 continue
@@ -80,14 +80,14 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
             dimensions = (image.shape[1], image.shape[0])
             aligned_image = apply_transformation(image, transformation_matrix, dimensions)
 
-            aligned_image_path = os.path.join(output_folder, f'aligned_detected_{image_type}_{suffix}.png')
+            aligned_image_path = os.path.join(output_folder, f'aligned_detected_{image_type}_{suffix}.tiff')
             cv2.imwrite(aligned_image_path, aligned_image)
             print(f"Saved aligned image to: {aligned_image_path}")
 
 # Run the function
 if __name__ == "__main__":
-    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
-    transformation_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903102437/"
+    image_folder = "SensorCommunication/Acquisition/batch_1/test/"
+    transformation_folder = "SensorCommunication/Acquisition/batch_1/test/"
     output_folder = image_folder
 
     apply_transformations_on_images(image_folder, transformation_folder, output_folder)

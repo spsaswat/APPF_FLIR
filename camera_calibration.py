@@ -434,6 +434,8 @@ def process_images(base_path, folder_name):
     K_dc, dist_coeffs_dc = load_camera_parameters(os.path.join(folder_path, 'kdc_intrinsics.txt'))
 
     # Variables to store circle centers from different images
+    rgb_circle_centers_dict = {}
+    dc_circle_centers_dict = {}
     rgb_circle_centers = []
     dc_circle_centers = []
 
@@ -445,15 +447,21 @@ def process_images(base_path, folder_name):
     detected_rgb_filenames = []
     detected_dc_filenames = []
 
+    # Stores transformation matrix
+    transformation_matrix_dict = {}
+
     # Process each image file within the directory
     for file_name in os.listdir(folder_path):
         image_path = os.path.join(folder_path, file_name)
         if file_name.startswith('rgb') and file_name.endswith('.png'):
             # Load and process RGB images
+            rgb_suffix = file_name.split('_')[-1].split('.')[0]
+            print(rgb_suffix)
             rgb_image = cv2.imread(image_path)
             rgb_image = undistort_image(rgb_image, K_rgb, dist_coeffs_rgb)
             masked_image = apply_x_coordinate_mask(rgb_image)
             rgb_circle_centers = detect_circles(masked_image, dp=1, minDist=30, param1=50, param2=30, minRadius=10, maxRadius=30, x_min=620, x_max=850, y_min=200, y_max=530, remove_outliers_flag=True)
+            rgb_circle_centers_dict[rgb_suffix] = rgb_circle_centers
             detected_rgb_filename = 'detected_' + file_name
             detected_rgb_filenames.append(detected_rgb_filename)
             cv2.imwrite(os.path.join(folder_path, detected_rgb_filename), masked_image)
@@ -461,9 +469,12 @@ def process_images(base_path, folder_name):
         elif file_name.startswith('DC') and file_name.endswith('.tiff'):
             # Load and process DC images
             #rotate_image_90_degrees(image_path,image_path)
+            dc_suffix = file_name.split('-')[-1].split('.')[0]
+            print(dc_suffix)
             dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
             dc_circle_centers = detect_circles(dc_image, dp=1, minDist=30, param1=50, param2=26, minRadius=10, maxRadius=30, x_min=120, x_max=360, y_min=100, y_max=500, remove_outliers_flag=False)
+            dc_circle_centers_dict[dc_suffix] = dc_circle_centers
             detected_dc_filename = 'detected_' + file_name
             detected_dc_filenames.append(detected_dc_filename)
             cv2.imwrite(os.path.join(folder_path, detected_dc_filename), dc_image)
@@ -473,21 +484,57 @@ def process_images(base_path, folder_name):
     detected_dc_filenames = sorted(detected_dc_filenames)
 
     # Process for transformation and alignment
-    if rgb_circle_centers and dc_circle_centers:
+    if rgb_circle_centers_dict and dc_circle_centers_dict:
+        for suffix in rgb_circle_centers_dict.keys():  
+            if suffix in dc_circle_centers_dict:
+                #get corresponding pair of rgb and dc circle centers
+                rgb_circle_centers = rgb_circle_centers_dict[suffix]
+                dc_circle_centers = dc_circle_centers_dict[suffix]
+
+                if rgb_circle_centers and dc_circle_centers:
+                    sorted_rgb_centers = sort_centers(np.array(rgb_circle_centers))
+                    sorted_rgb_matrix = sort_matrix_rows_by_x(sorted_rgb_centers)
+                    
+                    sorted_dc_centers = sort_centers(np.array(dc_circle_centers))
+                    sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers)
+                    transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix, sorted_dc_matrix)
+                    transformation_matrix_dict[suffix] = transformation_matrix
+                    if transformation_matrix is not None:
+                        # Save the transformation matrix to a file for potential reuse
+                        matrix_file_path = os.path.join(folder_path, f'transformation_matrix_{suffix}.npy')
+                        np.save(matrix_file_path, transformation_matrix)
+                        print(f"Transformation matrix saved to: {matrix_file_path}")
+                    else:
+                        print("Failed to compute the transformation matrix; skipping saving.")
+                    # print(f"Sorted RGB Matrix for {suffix}:")
+                    # print(sorted_rgb_matrix)
+                    # print("----------")
+                    
+                    # print(f"Sorted DC Matrix for {suffix}:")
+                    # print(sorted_dc_matrix)
+                    # print("----------")
+                else:
+                    print(f"No valid circles detected for suffix: {suffix}")
+            else:
+                print(f"No corresponding DC centers for suffix: {suffix}")
+        
+
+        """
         sorted_rgb_centers = sort_centers(np.array(rgb_circle_centers))
         sorted_rgb_matrix = sort_matrix_rows_by_x(sorted_rgb_centers)
-        print(sorted_rgb_matrix)
-        print("----------")
+        #print(sorted_rgb_matrix)
+        #print("----------")
 
         sorted_dc_centers = sort_centers(np.array(dc_circle_centers))
         sorted_dc_matrix = sort_matrix_rows_by_x(sorted_dc_centers)
-        print(sorted_dc_matrix)
+        #print(sorted_dc_matrix)
 
 
 
         # Match features between RGB and DC images and compute the transformation matrix
         transformation_matrix = compute_transformation_matrix(sorted_rgb_matrix, sorted_dc_matrix)
         print("Transformation Matrix:\n", transformation_matrix)
+        """
 
         # Apply the computed transformation to align the DC images
         for detected_dc_filename, detected_rgb_filename in zip(detected_dc_filenames, detected_rgb_filenames):
@@ -498,7 +545,11 @@ def process_images(base_path, folder_name):
             #print("----------")
             #print(masked_image.shape[1], masked_image.shape[0])
             #print(dc_image.shape[1], dc_image.shape[0])
-            aligned_dc_image = apply_transformation(dc_image, transformation_matrix, (masked_image.shape[1], masked_image.shape[0]))
+            suffix = suffix = detected_rgb_filename.split('_')[-1].split('.')[0]
+            print(suffix)
+            print(transformation_matrix_dict[suffix])
+            print("dimensions: ", masked_image.shape[1], masked_image.shape[0])
+            aligned_dc_image = apply_transformation(dc_image, transformation_matrix_dict[suffix], (masked_image.shape[1], masked_image.shape[0]))
             print()
             aligned_dc_image_path = os.path.join(folder_path, 'aligned_' + detected_dc_filename)
             cv2.imwrite(aligned_dc_image_path, aligned_dc_image)
