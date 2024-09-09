@@ -51,20 +51,62 @@ def preprocess_for_rgb_circle_detection(image):
     
     return normalized
 
+def apply_unsharp_mask(image, kernel_size=(5, 5), sigma=1.0, amount=1.5):
+    """
+    Apply an unsharp mask to enhance edges and sharpen the image.
+
+    Args:
+    image (ndarray): The input image to sharpen.
+    kernel_size (tuple): The size of the Gaussian kernel.
+    sigma (float): The standard deviation for the Gaussian kernel.
+    amount (float): The amount of sharpening.
+
+    Returns:
+    ndarray: The sharpened image.
+    """
+    # Apply Gaussian blur to the image
+    blurred = cv2.GaussianBlur(image, kernel_size, sigma)
+
+    # Combine the original image with the blurred image
+    sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
+    return sharpened
+
+
 def preprocess_for_dc_circle_detection(image):
-    """Preprocess DC images for circle detection."""
-    # Apply any DC-specific preprocessing like denoising or sharpening
-    filtered_image = cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75)
+    """
+    Minimal preprocessing for DC image to enhance circle detection.
+
+    Args:
+    image (ndarray): The input DC image.
+
+    Returns:
+    ndarray: The preprocessed image suitable for circle detection.
+    """
+    # Convert to grayscale if not already
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+
+    # Apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (9, 9), 2)  # Slightly stronger blur to reduce noise
+
+    # Apply simple thresholding to enhance contrast
+    _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)  # Invert to make circles white on black
+
+    return thresh
+
+
+def ensure_dc_image_format(image):
+    """Ensure the DC image is in the correct format and range before processing."""
+    # If the image is in 16-bit format, normalize to 8-bit
+    if image.dtype == np.uint16:
+        image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-    # Convert to 8-bit format
-    normalized = cv2.normalize(filtered_image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    
-    return normalized
+    return image
 
 def detect_circles(image, dp, minDist, param1, param2, minRadius, maxRadius, x_min, x_max, y_min, y_max, remove_outliers_flag=False, is_dc_image=False):
     """Detect circles in an image using the Hough Transform algorithm."""
     # Apply preprocessing specifically for RGB or DC images
     if is_dc_image:
+        image = ensure_dc_image_format(image)
         processed_image = preprocess_for_dc_circle_detection(image)
     else:
         processed_image = preprocess_for_rgb_circle_detection(image)
@@ -152,7 +194,23 @@ def process_images(base_path, folder_name):
             dc_suffix = file_name.split('-')[-1].split('.')[0]
             dc_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             dc_image = undistort_image(dc_image, K_dc, dist_coeffs_dc)
-            dc_circle_centers = detect_circles(dc_image, dp=1.2, minDist=40, param1=50, param2=28, minRadius=5, maxRadius=25, x_min=120, x_max=360, y_min=100, y_max=500, remove_outliers_flag=False, is_dc_image=True)
+            dc_circle_centers = detect_circles(
+                dc_image, 
+                dp=1.8,  # Set the resolution of the accumulator
+                minDist=30,  # Minimum distance between the centers of detected circles
+                param1=120,  # Higher threshold for Canny edge detection
+                param2=10,  # Accumulator threshold for circle detection
+                minRadius=10, 
+                maxRadius=30,  # Adjust the radius range as needed
+                x_min=120, 
+                x_max=360, 
+                y_min=100, 
+                y_max=500, 
+                remove_outliers_flag=False, 
+                is_dc_image=True
+            )
+
+
             dc_circle_centers_dict[dc_suffix] = dc_circle_centers
             detected_dc_filename = 'detected_' + file_name
             detected_dc_filenames.append(detected_dc_filename)
