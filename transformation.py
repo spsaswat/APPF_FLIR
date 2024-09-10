@@ -49,6 +49,37 @@ def apply_transformation(image, matrix, dimensions):
         print(f"Error applying transformation: {e}")
         return image
 
+def adjust_rgb_to_dc_visible_area(rgb_image_path, dc_image_path):
+    """
+    Adjust the RGB image to match the visible area of the DC image.
+
+    Args:
+    rgb_image (ndarray): The RGB image.
+    dc_image (ndarray): The DC image.
+
+    Returns:
+    ndarray: The adjusted RGB image.
+    """
+    # Load the RGB and DC images
+    rgb_image = cv2.imread(rgb_image_path)
+    dc_image = cv2.imread(dc_image_path, cv2.IMREAD_GRAYSCALE)
+
+    # Threshold the DC image to create a mask of the visible area
+    _, dc_mask = cv2.threshold(dc_image, 1, 255, cv2.THRESH_BINARY)
+    # Find contours in the mask
+    contours, _ = cv2.findContours(dc_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Assume the largest contour is the visible area
+    visible_contour = max(contours, key=cv2.contourArea)
+    # Get the bounding rectangle of the visible contour
+    x, y, w, h = cv2.boundingRect(visible_contour)
+    # Create a black mask with the same dimensions as the RGB image
+    black_mask = np.zeros_like(rgb_image)
+    # Define the visible area on the black mask based on the bounding rectangle
+    black_mask[y:y+h, x:x+w] = rgb_image[y:y+h, x:x+w]
+    
+    return black_mask
+
+
 def apply_transformations_on_images(image_folder, transformation_folder, output_folder):
     """
     Apply transformation matrices to the corresponding images in another folder and save aligned images.
@@ -92,17 +123,24 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
             _, ext = os.path.splitext(file_name)
             if ext == '.png':
                 continue
-            else:
+            elif ext == '.tiff':
                 aligned_image = apply_transformation(image, transformation_matrix, dimensions)
             
-            #if aligned_image is 
-
             aligned_image_path = os.path.join(output_folder, f'aligned_detected_{image_type}_{suffix}{ext}')
-            
             # Save the image with the same file extension as the original file
             cv2.imwrite(aligned_image_path, aligned_image)
-
             print(f"Saved aligned image to: {aligned_image_path}")
+            
+            rgb_image_path = os.path.join(output_folder, f'rgb_{suffix}.png')
+            dc_image_path = aligned_image_path
+            # Adjust the RGB image to match the visible area of the DC image
+            aligned_rgb_image = adjust_rgb_to_dc_visible_area(rgb_image_path, dc_image_path)
+            # Save the adjusted RGB image
+            aligned_rgb_image_path = os.path.join(output_folder, f'aligned_detected_rgb_{suffix}.png')
+            cv2.imwrite(aligned_rgb_image_path, aligned_rgb_image)
+            print(f"Saved adjusted RGB image to: {aligned_rgb_image_path}")
+
+
 
 if __name__ == "__main__":
     image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
