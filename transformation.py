@@ -72,6 +72,7 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
             if image is None:
                 print(f"Failed to load image: {image_path}")
                 continue
+<<<<<<< HEAD
             print(suffix)
 
             # Load corresponding RGB image to get its dimensions
@@ -82,6 +83,8 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
                 continue
             # Use the dimensions of the RGB image for both DC and RGB transformations
             dimensions = (rgb_image.shape[1], rgb_image.shape[0])
+=======
+>>>>>>> cd8e8f66be8a664d0923bb72316da24a497992f9
 
             transformation_matrix = load_transformation_matrix(transformation_folder, suffix)
             if transformation_matrix is None:
@@ -104,10 +107,14 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
 
             print(f"Saved aligned image to: {aligned_image_path}")
 
-# Run the function
 if __name__ == "__main__":
+<<<<<<< HEAD
     image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
     transformation_folder = "SensorCommunication/Acquisition/batch_1/test/"
     output_folder = image_folder
 
     apply_transformations_on_images(image_folder, transformation_folder, output_folder)
+=======
+    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903102437/"
+    transformation_folder = "SensorCommunication/Acquisition/batch_1/test_plant_202409
+>>>>>>> cd8e8f66be8a664d0923bb72316da24a497992f9
