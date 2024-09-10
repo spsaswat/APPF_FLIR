@@ -73,20 +73,40 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
                 print(f"Failed to load image: {image_path}")
                 continue
             print(suffix)
+
+            # Load corresponding RGB image to get its dimensions
+            rgb_image_path = os.path.join(image_folder, f"rgb_{suffix}.png")  # Assuming RGB images are .png format
+            rgb_image = cv2.imread(rgb_image_path)
+            if rgb_image is None:
+                print(f"Failed to load corresponding RGB image: {rgb_image_path}")
+                continue
+            # Use the dimensions of the RGB image for both DC and RGB transformations
+            dimensions = (rgb_image.shape[1], rgb_image.shape[0])
+
             transformation_matrix = load_transformation_matrix(transformation_folder, suffix)
             if transformation_matrix is None:
                 continue
 
-            dimensions = (image.shape[1], image.shape[0])
-            aligned_image = apply_transformation(image, transformation_matrix, dimensions)
+            #dimensions = (image.shape[1], image.shape[0])
+            # Extract the original file extension
+            _, ext = os.path.splitext(file_name)
+            if ext == '.png':
+                continue
+            else:
+                aligned_image = apply_transformation(image, transformation_matrix, dimensions)
+            
+            #if aligned_image is 
 
-            aligned_image_path = os.path.join(output_folder, f'aligned_detected_{image_type}_{suffix}.tiff')
+            aligned_image_path = os.path.join(output_folder, f'aligned_detected_{image_type}_{suffix}{ext}')
+            
+            # Save the image with the same file extension as the original file
             cv2.imwrite(aligned_image_path, aligned_image)
+
             print(f"Saved aligned image to: {aligned_image_path}")
 
 # Run the function
 if __name__ == "__main__":
-    image_folder = "SensorCommunication/Acquisition/batch_1/test/"
+    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
     transformation_folder = "SensorCommunication/Acquisition/batch_1/test/"
     output_folder = image_folder
 
