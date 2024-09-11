@@ -143,7 +143,7 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
 
 
 if __name__ == "__main__":
-    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
+    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903102851/"
     transformation_folder = "SensorCommunication/Acquisition/batch_1/test/"
     output_folder = image_folder
 
