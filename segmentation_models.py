@@ -232,25 +232,55 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_emb
         'f1_tta': f1_tta
     }
 
-# 8. Data Loading and Preparation
-def load_data(image_dir, mask_dir, test_size=0.2):
-    image_filenames = os.listdir(image_dir)
-    images = [img_to_array(load_img(os.path.join(image_dir, img), target_size=(256, 256))) for img in image_filenames]
-    masks = [img_to_array(load_img(os.path.join(mask_dir, img), target_size=(256, 256), color_mode='grayscale')) for img in image_filenames]
-    
-    images = np.array(images) / 255.0
-    masks = np.array(masks) / 255.0
-    
+# 8. Data Loading and Preparation for Folders of Images and Masks
+def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
+    images = []
+    masks = []
+
+    # List all image files in the image folder
+    image_filenames = os.listdir(image_folder)
+
+    for image_filename in image_filenames:
+        image_path = os.path.join(image_folder, image_filename)
+
+        # Assuming the mask filename matches the image filename but is in the mask folder and is JSON
+        mask_filename = image_filename.replace('.jpg', '.json')  # Adjust extension if needed
+        mask_path = os.path.join(mask_folder, mask_filename)
+
+        # Load the image
+        image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
+        images.append(image)
+
+        # Load and process the mask from the JSON file
+        with open(mask_path, 'r') as f:
+            mask_data = json.load(f)
+
+        mask = np.zeros((256, 256))  # Create an empty mask of the appropriate size
+
+        # Extracting points from JSON and creating the mask
+        for polygon in mask_data['shapes']:  # Adjust 'shapes' based on the structure of your JSON
+            points = np.array(polygon['points'], dtype=np.int32)  # Adjust 'points' based on JSON format
+            cv2.fillPoly(mask, [points], 1)  # Fill the mask with the polygons
+
+        mask = np.expand_dims(mask, axis=-1)  # Expand dimensions for compatibility (from 2D to 3D)
+        mask = cv2.resize(mask, (256, 256)) / 255.0  # Resize to match the image and normalize
+        masks.append(mask)
+
+    # Convert lists to NumPy arrays
+    images = np.array(images)
+    masks = np.array(masks)
+
+    # Split into training and validation sets
     X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=test_size)
-    
+
     return X_train, X_val, y_train, y_val
 
 # 9. Main Training Loop for Different Models
 def main():
-    image_dir = "path_to_images"
-    mask_dir = "path_to_masks"
-    
-    X_train, X_val, y_train, y_val = load_data(image_dir, mask_dir)
+    image_folder = "/path/to/image_folder"  # Update this with the path to your image folder
+    mask_folder = "/path/to/mask_folder"    # Update this with the path to your mask folder
+
+    X_train, X_val, y_train, y_val = load_data_from_folders(image_folder, mask_folder)
     
     models_to_train = ['unet', 'resnet50_unet', 'mobilenetv3_unet', 'sam_unet']
     
@@ -284,3 +314,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
