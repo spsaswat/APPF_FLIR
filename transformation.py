@@ -140,10 +140,19 @@ def apply_transformations_on_images(image_folder, transformation_folder, output_
             cv2.imwrite(aligned_rgb_image_path, aligned_rgb_image)
             print(f"Saved adjusted RGB image to: {aligned_rgb_image_path}")
 
+            depth_image_path = os.path.join(output_folder, f'depth_{suffix}.png')
+            # Adjust the depth image to match the visible area of the DC image
+            aligned_depth_image = adjust_rgb_to_dc_visible_area(depth_image_path, dc_image_path)
+            # Save the adjusted depth image
+            aligned_depth_image_path = os.path.join(output_folder, f'aligned_detected_depth_{suffix}.png')
+            cv2.imwrite(aligned_depth_image_path, aligned_depth_image)
+            print(f"Saved adjusted RGB image to: {aligned_depth_image_path}")
+
+
 
 
 if __name__ == "__main__":
-    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903102851/"
+    image_folder = "SensorCommunication/Acquisition/batch_1/test_plant_20240903103507/"
     transformation_folder = "SensorCommunication/Acquisition/batch_1/test/"
     output_folder = image_folder
 
