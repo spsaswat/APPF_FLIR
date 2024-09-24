@@ -204,7 +204,6 @@ def generate_sam_embeddings(sam_predictor, images):
         sam_embeddings.append(embedding)
     return np.array(sam_embeddings)
 
-# 7. Training and Evaluation Function
 # 7. Training and Evaluation Function (Updated to Use SAM Embeddings)
 def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=None, batch_size=16, epochs=50):
     input_size = X_train.shape[1:]
