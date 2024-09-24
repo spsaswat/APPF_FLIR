@@ -226,11 +226,19 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_pre
     
     # Callback for saving the best model
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
+<<<<<<< HEAD
+        f'{model_name}_best_model.keras',  # Keep .h5 extension
+        save_best_only=True,
+        monitor='val_loss',
+        mode='min',
+        save_format='keras'  # Specify save_format to avoid the error
+=======
         f'{model_name}_best_model.h5',  # Keep .h5 extension
         save_best_only=True,
         monitor='val_loss',
         mode='min',
         save_format='h5'  # Specify save_format to avoid the error
+>>>>>>> ebd669b12b6286e624f0860fff7da9868f4e99d0
     )
 
     
@@ -364,7 +372,8 @@ def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
 # 9. Main Training Loop for Different Models (Updated for SAM)
 def main():
     # Initialize the SAM model using sam_model_registry
-    sam_checkpoint = "C:/Users/polis/Downloads/Azure_TL/sam_vit_h_4b8939.pth"  # Add the correct path to the SAM checkpoint
+    sam_checkpoint = "/Users/likexiao/Desktop/2024 s2/8715/sam_vit_h_4b8939.pth"  # Add the correct path to the SAM checkpoint
+    #/Users/likexiao/Desktop/2024 s2/8715/sam_vit_h_4b8939.pth
     sam_model_type = "vit_h"  # Change this to the correct model type (e.g., "vit_b", "vit_l", etc.)
     
     sam_model = sam_model_registry[sam_model_type](checkpoint=sam_checkpoint)
@@ -406,4 +415,5 @@ def main():
         print(f"  IoU (TTA): {result['iou_tta']:.4f}, F1 (TTA): {result['f1_tta']:.4f}")
 
 if __name__ == "__main__":
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
     main()
