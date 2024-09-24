@@ -5,6 +5,7 @@ import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import json
 import cv2
+from PIL import Image
 from tqdm import tqdm  # Import tqdm for progress bar
 from segment_anything import sam_model_registry, SamPredictor
 import numpy as np
@@ -207,7 +208,7 @@ def generate_sam_embeddings(sam_predictor, images):
 # 7. Training and Evaluation Function (Updated to Use SAM Embeddings)
 def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=None, batch_size=16, epochs=50):
     input_size = X_train.shape[1:]
-
+    
     # Generate SAM embeddings if the model is `sam_unet`
     if model_name == 'sam_unet' and sam_predictor is not None:
         sam_train_embeddings = generate_sam_embeddings(sam_predictor, X_train)
@@ -217,14 +218,21 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_pre
         sam_val_embeddings = None
     
     model = get_model(model_name, input_size=input_size)
-
+    
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     
     # Data augmentation
     train_augmentation = get_training_augmentation()
-
+    
     # Callback for saving the best model
-    checkpoint = tf.keras.callbacks.ModelCheckpoint(f'{model_name}_best_model.h5', save_best_only=True, monitor='val_loss', mode='min')
+    checkpoint = tf.keras.callbacks.ModelCheckpoint(
+        f'{model_name}_best_model.h5',  # Keep .h5 extension
+        save_best_only=True,
+        monitor='val_loss',
+        mode='min',
+        save_format='h5'  # Specify save_format to avoid the error
+    )
+
     
     # Wrap the training process with tqdm progress bar
     with tqdm(total=epochs, desc=f"Training {model_name}", unit="epoch") as pbar:
@@ -237,11 +245,13 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_pre
             callbacks=[checkpoint],
             verbose=0  # Set verbose to 0 to avoid clutter, tqdm will handle the progress
         )
+        
+        # Update the progress bar using a callback or appropriately
         for epoch in range(epochs):
             pbar.update(1)
     
     # Load best model for evaluation
-    model.load_weights(f'{model_name}_best_model.h5')
+    model.load_weights(f'{model_name}_best_model.keras')  # Use .keras extension
     
     # Evaluate on validation data
     val_preds = model.predict([X_val, sam_val_embeddings] if model_name == 'sam_unet' else X_val)
@@ -261,6 +271,7 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_pre
         'f1_tta': f1_tta
     }
 
+
 # 8. Data Loading and Preparation for Folders of Images and Masks
 def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
     images = []
@@ -269,43 +280,42 @@ def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
     # List all files in the folder
     all_files = os.listdir(image_folder)
 
-    # Separate image and JSON files
-    image_files = [f for f in all_files if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-    json_files = [f for f in all_files if f.lower().endswith('.json')]
+    # Create dictionaries to map base filenames to their respective image and JSON filenames
+    image_files = {}
+    json_files = {}
 
-    for image_filename in image_files:
+    for filename in all_files:
+        basename, ext = os.path.splitext(filename)
+        ext = ext.lower()
+        if ext in ['.jpg', '.jpeg', '.png']:
+            image_files[basename] = filename
+        elif ext == '.json':
+            json_files[basename] = filename
+
+    # Find common base filenames that have both image and JSON files
+    common_basenames = set(image_files.keys()) & set(json_files.keys())
+
+    if not common_basenames:
+        print("No matching image and JSON files found.")
+        return None, None, None, None
+
+    for basename in common_basenames:
+        image_filename = image_files[basename]
+        json_filename = json_files[basename]
+
         image_path = os.path.join(image_folder, image_filename)
-        
-        # Find corresponding JSON file
-        json_filename = os.path.splitext(image_filename)[0] + '.json'
-        if json_filename not in json_files:
-            print(f"No corresponding JSON file found for {image_filename}")
-            continue
-
         json_path = os.path.join(mask_folder, json_filename)
 
-        # Load the image
+        # Attempt to load and process the mask from the JSON file first
         try:
-            image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
-            images.append(image)
-        except Exception as e:
-            print(f"Error loading image {image_filename}: {e}")
-            continue
-
-        # Load and process the mask from the JSON file
-        try:
-            with open(json_path, 'r', encoding='utf-8-sig') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 mask_data = json.load(f)
-        except json.JSONDecodeError as e:
-            print(f"JSON decoding error in file {json_filename}: {e}")
-            continue
         except Exception as e:
-            print(f"Error reading file {json_filename}: {e}")
-            continue
+            print(f"Error reading JSON file {json_filename}: {e}")
+            continue  # Skip this pair if the JSON cannot be read
 
+        # Create the mask from the points in the JSON file
         mask = np.zeros((256, 256), dtype=np.uint8)
-
-        # Extracting points from JSON and creating the mask
         if 'shapes' in mask_data:
             for shape in mask_data['shapes']:
                 if 'points' in shape:
@@ -313,22 +323,42 @@ def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
                     cv2.fillPoly(mask, [points], 1)
                 else:
                     print(f"No 'points' key in shape in file {json_filename}")
+            # Resize mask to match the image and normalize
+            mask = cv2.resize(mask, (256, 256)) / 255.0
+            mask = np.expand_dims(mask, axis=-1)  # Expand dimensions for compatibility
         else:
             print(f"No 'shapes' key in JSON data in file {json_filename}")
-            continue
+            continue  # Skip this pair if 'shapes' key is missing
 
-        mask = np.expand_dims(mask, axis=-1)
-        mask = cv2.resize(mask, (256, 256)) / 255.0
+        # Now attempt to load the image
+        try:
+            image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
+            # Ensure the image has three channels
+            if image.shape[-1] != 3:
+                print(f"Image {image_filename} does not have 3 channels. Skipping.")
+                continue
+        except Exception as e:
+            print(f"Error loading image {image_filename}: {e}")
+            continue  # Skip this pair if the image cannot be loaded
+
+        # Both image and mask loaded successfully; add to lists
+        images.append(image)
         masks.append(mask)
 
     # Convert lists to NumPy arrays
     images = np.array(images)
     masks = np.array(masks)
 
+    # Check if we have any data
+    if len(images) == 0:
+        print("No data found after processing. Please check your folders.")
+        return None, None, None, None
+
     # Split into training and validation sets
     X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=test_size)
 
     return X_train, X_val, y_train, y_val
+
 
 
 # 9. Main Training Loop for Different Models (Updated for SAM)
