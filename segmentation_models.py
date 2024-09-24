@@ -2,6 +2,10 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications import ResNet50, MobileNetV3Large
 import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import json
+import cv2
+from tqdm import tqdm  # Import tqdm for progress bar
 from segment_anything import sam_model_registry, SamPredictor
 import numpy as np
 import matplotlib.pyplot as plt
@@ -191,10 +195,30 @@ def calculate_metrics(y_true, y_pred):
     
     return iou, f1
 
+# Function to generate SAM embeddings for each image
+def generate_sam_embeddings(sam_predictor, images):
+    sam_embeddings = []
+    for image in images:
+        sam_predictor.set_image(image)
+        embedding = sam_predictor.get_image_embedding().cpu().numpy()
+        sam_embeddings.append(embedding)
+    return np.array(sam_embeddings)
+
 # 7. Training and Evaluation Function
-def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_embeddings=None, batch_size=16, epochs=50):
-    model = get_model(model_name)
+# 7. Training and Evaluation Function (Updated to Use SAM Embeddings)
+def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=None, batch_size=16, epochs=50):
+    input_size = X_train.shape[1:]
+
+    # Generate SAM embeddings if the model is `sam_unet`
+    if model_name == 'sam_unet' and sam_predictor is not None:
+        sam_train_embeddings = generate_sam_embeddings(sam_predictor, X_train)
+        sam_val_embeddings = generate_sam_embeddings(sam_predictor, X_val)
+    else:
+        sam_train_embeddings = None
+        sam_val_embeddings = None
     
+    model = get_model(model_name, input_size=input_size)
+
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     
     # Data augmentation
@@ -203,19 +227,25 @@ def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_emb
     # Callback for saving the best model
     checkpoint = tf.keras.callbacks.ModelCheckpoint(f'{model_name}_best_model.h5', save_best_only=True, monitor='val_loss', mode='min')
     
-    # Training the model
-    history = model.fit(
-        train_augmentation(X_train), y_train, 
-        validation_data=(X_val, y_val),
-        epochs=epochs, batch_size=batch_size,
-        callbacks=[checkpoint]
-    )
+    # Wrap the training process with tqdm progress bar
+    with tqdm(total=epochs, desc=f"Training {model_name}", unit="epoch") as pbar:
+        history = model.fit(
+            [train_augmentation(X_train), sam_train_embeddings] if model_name == 'sam_unet' else train_augmentation(X_train),
+            y_train,
+            validation_data=([X_val, sam_val_embeddings], y_val) if model_name == 'sam_unet' else (X_val, y_val),
+            epochs=epochs,
+            batch_size=batch_size,
+            callbacks=[checkpoint],
+            verbose=0  # Set verbose to 0 to avoid clutter, tqdm will handle the progress
+        )
+        for epoch in range(epochs):
+            pbar.update(1)
     
     # Load best model for evaluation
     model.load_weights(f'{model_name}_best_model.h5')
     
     # Evaluate on validation data
-    val_preds = model.predict(X_val)
+    val_preds = model.predict([X_val, sam_val_embeddings] if model_name == 'sam_unet' else X_val)
     
     iou, f1 = calculate_metrics(y_val, val_preds)
     
@@ -237,33 +267,59 @@ def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
     images = []
     masks = []
 
-    # List all image files in the image folder
-    image_filenames = os.listdir(image_folder)
+    # List all files in the folder
+    all_files = os.listdir(image_folder)
 
-    for image_filename in image_filenames:
+    # Separate image and JSON files
+    image_files = [f for f in all_files if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    json_files = [f for f in all_files if f.lower().endswith('.json')]
+
+    for image_filename in image_files:
         image_path = os.path.join(image_folder, image_filename)
+        
+        # Find corresponding JSON file
+        json_filename = os.path.splitext(image_filename)[0] + '.json'
+        if json_filename not in json_files:
+            print(f"No corresponding JSON file found for {image_filename}")
+            continue
 
-        # Assuming the mask filename matches the image filename but is in the mask folder and is JSON
-        mask_filename = image_filename.replace('.jpg', '.json')  # Adjust extension if needed
-        mask_path = os.path.join(mask_folder, mask_filename)
+        json_path = os.path.join(mask_folder, json_filename)
 
         # Load the image
-        image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
-        images.append(image)
+        try:
+            image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
+            images.append(image)
+        except Exception as e:
+            print(f"Error loading image {image_filename}: {e}")
+            continue
 
         # Load and process the mask from the JSON file
-        with open(mask_path, 'r') as f:
-            mask_data = json.load(f)
+        try:
+            with open(json_path, 'r', encoding='utf-8-sig') as f:
+                mask_data = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"JSON decoding error in file {json_filename}: {e}")
+            continue
+        except Exception as e:
+            print(f"Error reading file {json_filename}: {e}")
+            continue
 
-        mask = np.zeros((256, 256))  # Create an empty mask of the appropriate size
+        mask = np.zeros((256, 256), dtype=np.uint8)
 
         # Extracting points from JSON and creating the mask
-        for polygon in mask_data['shapes']:  # Adjust 'shapes' based on the structure of your JSON
-            points = np.array(polygon['points'], dtype=np.int32)  # Adjust 'points' based on JSON format
-            cv2.fillPoly(mask, [points], 1)  # Fill the mask with the polygons
+        if 'shapes' in mask_data:
+            for shape in mask_data['shapes']:
+                if 'points' in shape:
+                    points = np.array(shape['points'], dtype=np.int32)
+                    cv2.fillPoly(mask, [points], 1)
+                else:
+                    print(f"No 'points' key in shape in file {json_filename}")
+        else:
+            print(f"No 'shapes' key in JSON data in file {json_filename}")
+            continue
 
-        mask = np.expand_dims(mask, axis=-1)  # Expand dimensions for compatibility (from 2D to 3D)
-        mask = cv2.resize(mask, (256, 256)) / 255.0  # Resize to match the image and normalize
+        mask = np.expand_dims(mask, axis=-1)
+        mask = cv2.resize(mask, (256, 256)) / 255.0
         masks.append(mask)
 
     # Convert lists to NumPy arrays
@@ -275,11 +331,19 @@ def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
 
     return X_train, X_val, y_train, y_val
 
-# 9. Main Training Loop for Different Models
-def main():
-    image_folder = "/path/to/image_folder"  # Update this with the path to your image folder
-    mask_folder = "/path/to/mask_folder"    # Update this with the path to your mask folder
 
+# 9. Main Training Loop for Different Models (Updated for SAM)
+def main():
+    # Initialize the SAM model using sam_model_registry
+    sam_checkpoint = "C:/Users/polis/Downloads/Azure_TL/sam_vit_h_4b8939.pth"  # Add the correct path to the SAM checkpoint
+    sam_model_type = "vit_h"  # Change this to the correct model type (e.g., "vit_b", "vit_l", etc.)
+    
+    sam_model = sam_model_registry[sam_model_type](checkpoint=sam_checkpoint)
+    sam_predictor = SamPredictor(sam_model)
+
+    image_folder = "SensorCommunication/Acquisition/opensource_datasets"
+    mask_folder = image_folder
+    
     X_train, X_val, y_train, y_val = load_data_from_folders(image_folder, mask_folder)
     
     models_to_train = ['unet', 'resnet50_unet', 'mobilenetv3_unet', 'sam_unet']
@@ -288,7 +352,7 @@ def main():
     
     for model_name in models_to_train:
         print(f"Training {model_name}...")
-        result = train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val)
+        result = train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=sam_predictor if model_name == 'sam_unet' else None)
         results.append(result)
     
         print(f"IoU: {result['iou']:.4f}, F1: {result['f1']:.4f}")
@@ -314,4 +378,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
