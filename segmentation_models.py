@@ -1,475 +1,344 @@
-import tensorflow as tf
-from tensorflow.keras import layers, models
-from tensorflow.keras.applications import ResNet50, MobileNetV3Large
 import os
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import json
 import cv2
-from PIL import Image
-from PIL import Image
-from tqdm import tqdm  # Import tqdm for progress bar
-from segment_anything import sam_model_registry, SamPredictor
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import jaccard_score, f1_score
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
-from sklearn.model_selection import train_test_split
+import torch
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+import logging
+from tqdm import tqdm
 
-# 1. Define the Segmentation Models
-def conv_block(inputs, filters):
-    conv = layers.Conv2D(filters, 3, activation='relu', padding='same')(inputs)
-    conv = layers.Conv2D(filters, 3, activation='relu', padding='same')(conv)
-    return conv
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-def unet(input_size=(256, 256, 3)):
-    inputs = tf.keras.Input(input_size)
-    
-    # Encoder (Downsampling)
-    conv1 = conv_block(inputs, 64)
-    pool1 = layers.MaxPooling2D(pool_size=(2, 2))(conv1)
-    conv2 = conv_block(pool1, 128)
-    pool2 = layers.MaxPooling2D(pool_size=(2, 2))(conv2)
-    conv3 = conv_block(pool2, 256)
-    pool3 = layers.MaxPooling2D(pool_size=(2, 2))(conv3)
-    conv4 = conv_block(pool3, 512)
-    pool4 = layers.MaxPooling2D(pool_size=(2, 2))(conv4)
-    
-    # Bridge
-    conv5 = conv_block(pool4, 1024)
-    
-    # Decoder (Upsampling)
-    up6 = layers.Conv2DTranspose(512, 2, strides=(2, 2), padding='same')(conv5)
-    up6 = layers.concatenate([up6, conv4])
-    conv6 = conv_block(up6, 512)
-    
-    up7 = layers.Conv2DTranspose(256, 2, strides=(2, 2), padding='same')(conv6)
-    up7 = layers.concatenate([up7, conv3])
-    conv7 = conv_block(up7, 256)
-    
-    up8 = layers.Conv2DTranspose(128, 2, strides=(2, 2), padding='same')(conv7)
-    up8 = layers.concatenate([up8, conv2])
-    conv8 = conv_block(up8, 128)
-    
-    up9 = layers.Conv2DTranspose(64, 2, strides=(2, 2), padding='same')(conv8)
-    up9 = layers.concatenate([up9, conv1])
-    conv9 = conv_block(up9, 64)
-    
-    outputs = layers.Conv2D(1, 1, activation='sigmoid')(conv9)
-    
-    return models.Model(inputs=inputs, outputs=outputs)
+def load_image_and_masks(image_path, json_path, max_size=1024):
+    try:
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Failed to load image: {image_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-def resnet50_unet(input_size=(256, 256, 3)):
-    base_model = ResNet50(weights='imagenet', include_top=False, input_shape=input_size)
-    
-    layer_names = ['conv1_relu', 'conv2_block3_out', 'conv3_block4_out', 'conv4_block6_out', 'conv5_block3_out']
-    layers = [base_model.get_layer(name).output for name in layer_names]
-    
-    down_stack = tf.keras.Model(inputs=base_model.input, outputs=layers)
-    down_stack.trainable = False
-    
-    inputs = tf.keras.Input(input_size)
-    skips = down_stack(inputs)
-    x = skips[-1]
-    skips = reversed(skips[:-1])
-    
-    for up, skip in zip([512, 256, 128, 64], skips):
-        x = layers.Conv2DTranspose(up, 3, strides=2, padding='same')(x)
-        x = layers.concatenate([x, skip])
-        x = conv_block(x, up)
-    
-    outputs = layers.Conv2D(1, 3, activation='sigmoid', padding='same')(x)
-    
-    return tf.keras.Model(inputs=inputs, outputs=outputs)
+        original_height, original_width = image.shape[:2]
+        scale = 1.0
+        if max(original_height, original_width) > max_size:
+            scale = max_size / max(original_height, original_width)
+            new_size = (int(original_width * scale), int(original_height * scale))
+            image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
 
-def mobilenetv3_unet(input_size=(256, 256, 3)):
-    base_model = MobileNetV3Large(weights='imagenet', include_top=False, input_shape=input_size)
-    
-    layer_names = ['expanded_conv/output', 'expanded_conv_4/output', 'expanded_conv_8/output', 'expanded_conv_12/output']
-    layers = [base_model.get_layer(name).output for name in layer_names]
-    
-    down_stack = tf.keras.Model(inputs=base_model.input, outputs=layers)
-    down_stack.trainable = False
-    
-    inputs = tf.keras.Input(input_size)
-    skips = down_stack(inputs)
-    x = skips[-1]
-    skips = reversed(skips[:-1])
-    
-    for up, skip in zip([256, 128, 64], skips):
-        x = layers.Conv2DTranspose(up, 3, strides=2, padding='same')(x)
-        x = layers.concatenate([x, skip])
-        x = conv_block(x, up)
-    
-    outputs = layers.Conv2D(1, 3, activation='sigmoid', padding='same')(x)
-    
-    return tf.keras.Model(inputs=inputs, outputs=outputs)
+        with open(json_path, 'r') as f:
+            data = json.load(f)
 
-def sam_unet(input_shape, sam_embedding_size):
-    inputs = layers.Input(shape=input_shape)
-    sam_input = layers.Input(shape=(sam_embedding_size,))
-    
-    sam_expanded = layers.Dense(input_shape[0] * input_shape[1])(sam_input)
-    sam_reshaped = layers.Reshape((input_shape[0], input_shape[1], 1))(sam_expanded)
-    x = layers.Concatenate()([inputs, sam_reshaped])
-    
-    conv1 = conv_block(x, 64)
-    pool1 = layers.MaxPooling2D(pool_size=(2, 2))(conv1)
-    conv2 = conv_block(pool1, 128)
-    pool2 = layers.MaxPooling2D(pool_size=(2, 2))(conv2)
-    conv3 = conv_block(pool2, 256)
-    pool3 = layers.MaxPooling2D(pool_size=(2, 2))(conv3)
-    conv4 = conv_block(pool3, 512)
-    pool4 = layers.MaxPooling2D(pool_size=(2, 2))(conv4)
-    
-    conv5 = conv_block(pool4, 1024)
-    
-    up6 = layers.Conv2DTranspose(512, 2, strides=(2, 2), padding='same')(conv5)
-    up6 = layers.concatenate([up6, conv4])
-    conv6 = conv_block(up6, 512)
-    
-    up7 = layers.Conv2DTranspose(256, 2, strides=(2, 2), padding='same')(conv6)
-    up7 = layers.concatenate([up7, conv3])
-    conv7 = conv_block(up7, 256)
-    
-    up8 = layers.Conv2DTranspose(128, 2, strides=(2, 2), padding='same')(conv7)
-    up8 = layers.concatenate([up8, conv2])
-    conv8 = conv_block(up8, 128)
-    
-    up9 = layers.Conv2DTranspose(64, 2, strides=(2, 2), padding='same')(conv8)
-    up9 = layers.concatenate([up9, conv1])
-    conv9 = conv_block(up9, 64)
-    
-    outputs = layers.Conv2D(1, 1, activation='sigmoid')(conv9)
-    
-    return models.Model(inputs=[inputs, sam_input], outputs=outputs)
+        gt_masks = []
+        for shape in data.get('shapes', []):
+            if shape.get('label') == 'leaf':
+                points = np.array(shape.get('points', []), dtype=np.float32)
+                # Adjust points if the image was resized
+                if scale != 1.0:
+                    points *= scale
+                points = points.astype(np.int32)
+                mask = np.zeros(image.shape[:2], dtype=np.uint8)
+                cv2.fillPoly(mask, [points], 1)
+                gt_masks.append(mask.astype(bool))
 
-# 2. Data Augmentation for Training
-def get_training_augmentation():
-    return tf.keras.Sequential([
-        layers.RandomFlip('horizontal_and_vertical'),
-        layers.RandomRotation(0.2),
-        layers.RandomZoom(0.1),
-        layers.RandomContrast(0.1),
-    ])
+        return image, gt_masks, image_path
+    except Exception as e:
+        logger.error(f"Error loading image or masks for {image_path}: {str(e)}")
+        return None, None, image_path
 
-# 3. Test-Time Augmentation (TTA)
-def perform_tta(model, image, num_augments=5):
-    tta_predictions = []
-    for _ in range(num_augments):
-        augmented_image = tf.expand_dims(image, 0)
-        augmented_image = get_training_augmentation()(augmented_image)
-        prediction = model.predict(augmented_image, verbose=0)[0]
-        tta_predictions.append(prediction)
-    return np.mean(tta_predictions, axis=0)
 
-# 4. Model Certainty Analysis
-def calculate_uncertainty(model, image, num_augments=5):
-    tta_predictions = []
-    for _ in range(num_augments):
-        augmented_image = tf.expand_dims(image, 0)
-        augmented_image = get_training_augmentation()(augmented_image)
-        prediction = model.predict(augmented_image, verbose=0)[0]
-        tta_predictions.append(prediction)
-    return np.mean(tta_predictions, axis=0), np.var(tta_predictions, axis=0)
+def setup_sam_model(checkpoint_path, device):
+    logger.info(f"Setting up SAM model with checkpoint: {checkpoint_path}")
+    sam = sam_model_registry["vit_h"](checkpoint=checkpoint_path)
+    sam.to(device=device)
+    sam.eval()
 
-# 5. Model Selection and Compilation
-def get_model(model_name, input_size=(256, 256, 3), sam_embedding_size=256):
-    if model_name == 'unet':
-        return unet(input_size)
-    elif model_name == 'resnet50_unet':
-        return resnet50_unet(input_size)
-    elif model_name == 'mobilenetv3_unet':
-        return mobilenetv3_unet(input_size)
-    elif model_name == 'sam_unet':
-        return sam_unet(input_size, sam_embedding_size)
-    else:
-        raise ValueError(f"Unknown model name: {model_name}")
-
-# 6. Performance Metrics
-def calculate_metrics(y_true, y_pred):
-    y_true_flat = y_true.flatten()
-    y_pred_flat = y_pred.flatten()
-    # Binarize predictions for metrics calculation
-    y_pred_flat = np.where(y_pred_flat > 0.5, 1, 0)
-    
-    iou = jaccard_score(y_true_flat, y_pred_flat)
-    f1 = f1_score(y_true_flat, y_pred_flat)
-    
-    return iou, f1
-
-# Function to generate SAM embeddings for each image
-def generate_sam_embeddings(sam_predictor, images):
-    sam_embeddings = []
-    for image in images:
-        sam_predictor.set_image(image)
-        embedding = sam_predictor.get_image_embedding().cpu().numpy()
-        sam_embeddings.append(embedding)
-    return np.array(sam_embeddings)
-
-# 7. Training and Evaluation Function (Updated to Use SAM Embeddings)
-def train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=None, batch_size=16, epochs=50):
-    input_size = X_train.shape[1:]
-        
-    # Generate SAM embeddings if the model is `sam_unet`
-    if model_name == 'sam_unet' and sam_predictor is not None:
-        sam_train_embeddings = generate_sam_embeddings(sam_predictor, X_train)
-        sam_val_embeddings = generate_sam_embeddings(sam_predictor, X_val)
-    else:
-        sam_train_embeddings = None
-        sam_val_embeddings = None
-    
-    model = get_model(model_name, input_size=input_size)
-        
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    
-    # Data augmentation
-    train_augmentation = get_training_augmentation()
-        
-    # Callback for saving the best model
-    checkpoint = tf.keras.callbacks.ModelCheckpoint(
-<<<<<<< HEAD
-        f'{model_name}_best_model.keras',  # Keep .h5 extension
-        save_best_only=True,
-        monitor='val_loss',
-        mode='min',
-        save_format='keras'  # Specify save_format to avoid the error
-=======
-        f'{model_name}_best_model.h5',  # Keep .h5 extension
-        save_best_only=True,
-        monitor='val_loss',
-        mode='min',
-        save_format='h5'  # Specify save_format to avoid the error
->>>>>>> ebd669b12b6286e624f0860fff7da9868f4e99d0
+    mask_generator = SamAutomaticMaskGenerator(
+        sam,
+        points_per_side=32,
+        pred_iou_thresh=0.86,
+        stability_score_thresh=0.92,
+        crop_n_layers=1,
+        crop_n_points_downscale_factor=2,
+        min_mask_region_area=100,
     )
+    return mask_generator
 
-    
-    # Wrap the training process with tqdm progress bar
-    with tqdm(total=epochs, desc=f"Training {model_name}", unit="epoch") as pbar:
-        history = model.fit(
-            [train_augmentation(X_train), sam_train_embeddings] if model_name == 'sam_unet' else train_augmentation(X_train),
-            y_train,
-            validation_data=([X_val, sam_val_embeddings], y_val) if model_name == 'sam_unet' else (X_val, y_val),
-            epochs=epochs,
-            batch_size=batch_size,
-            callbacks=[checkpoint],
-            verbose=0  # Set verbose to 0 to avoid clutter, tqdm will handle the progress
-        )
-        
-        # Update the progress bar using a callback or appropriately
-        
-        # Update the progress bar using a callback or appropriately
-        for epoch in range(epochs):
-            pbar.update(1)
-    
-    # Load best model for evaluation
-    model.load_weights(f'{model_name}_best_model.keras')  # Use .keras extension
-    model.load_weights(f'{model_name}_best_model.keras')  # Use .keras extension
-    
-    # Evaluate on validation data
-    val_preds = model.predict([X_val, sam_val_embeddings] if model_name == 'sam_unet' else X_val)
-    
-    iou, f1 = calculate_metrics(y_val, val_preds)
-    
-    # Test-Time Augmentation (TTA)
-    val_preds_tta = np.array([perform_tta(model, img) for img in X_val])
-    iou_tta, f1_tta = calculate_metrics(y_val, val_preds_tta)
-    
-    return {
-        'model_name': model_name,
-        'history': history.history,
-        'iou': iou,
-        'f1': f1,
-        'iou_tta': iou_tta,
-        'f1_tta': f1_tta
-    }
+def generate_sam_masks(image, mask_generator):
+    # Ensure the image has 3 channels (RGB)
+    if image.ndim == 2:
+        image = np.stack((image,) * 3, axis=-1)
+    elif image.shape[-1] > 3:
+        image = image[:, :, :3]
+
+    # Resize image so that the longer side is exactly 1024 pixels
+    h, w = image.shape[:2]
+    if max(h, w) != 1024:
+        scale = 1024 / max(h, w)
+        new_h, new_w = int(h * scale), int(w * scale)
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    logger.debug(f"Image shape for generate: {image.shape}, dtype: {image.dtype}")
+
+    # Ensure image is in uint8 format
+    if image.dtype != np.uint8:
+        image = (image * 255).astype(np.uint8)
+
+    # Generate masks
+    sam_masks = mask_generator.generate(image)
+
+    return sam_masks
+
+def calculate_metrics(gt_masks, sam_masks, original_shape, resized_shape):
+    if not gt_masks or not sam_masks:
+        return 0, 0, 0
+
+    # Resize ground truth masks to match SAM output
+    resized_gt_masks = []
+    for gt_mask in gt_masks:
+        resized_gt_mask = cv2.resize(gt_mask.astype(np.uint8), (resized_shape[1], resized_shape[0]), interpolation=cv2.INTER_NEAREST)
+        resized_gt_masks.append(resized_gt_mask.astype(bool))
 
 
+    sam_binary_masks = [mask['segmentation'] for mask in sam_masks]
 
-# 8. Data Loading and Preparation for Folders of Images and Masks
-def load_data_from_folders(image_folder, mask_folder, test_size=0.2):
-    images = []
-    masks = []
+    ious = []
+    for resized_gt_mask in resized_gt_masks:
+        for sam_mask in sam_binary_masks:
+            intersection = np.logical_and(resized_gt_mask, sam_mask).sum()
+            union = np.logical_or(resized_gt_mask, sam_mask).sum()
+            iou = intersection / union if union > 0 else 0
+            ious.append(iou)
 
-    # List all files in the folder
-    all_files = os.listdir(image_folder)
+    # Calculate metrics
+    ap = sum(1 for iou in ious if iou > 0.5) / len(sam_binary_masks) if sam_binary_masks else 0
+    ar = sum(1 for iou in ious if iou > 0.5) / len(gt_masks) if gt_masks else 0
+    dsc = 2 * ap * ar / (ap + ar) if (ap + ar) > 0 else 0
 
-    # Create dictionaries to map base filenames to their respective image and JSON filenames
-    image_files = {}
-    json_files = {}
+    return ap, ar, dsc
 
-    for filename in all_files:
-        basename, ext = os.path.splitext(filename)
-        ext = ext.lower()
-        if ext in ['.jpg', '.jpeg', '.png']:
-            image_files[basename] = filename
-        elif ext == '.json':
-            json_files[basename] = filename
-
-    # Find common base filenames that have both image and JSON files
-    common_basenames = set(image_files.keys()) & set(json_files.keys())
-
-    if not common_basenames:
-        print("No matching image and JSON files found.")
-        return None, None, None, None
-
-    for basename in common_basenames:
-        image_filename = image_files[basename]
-        json_filename = json_files[basename]
-
-    # Create dictionaries to map base filenames to their respective image and JSON filenames
-    image_files = {}
-    json_files = {}
-
-    for filename in all_files:
-        basename, ext = os.path.splitext(filename)
-        ext = ext.lower()
-        if ext in ['.jpg', '.jpeg', '.png']:
-            image_files[basename] = filename
-        elif ext == '.json':
-            json_files[basename] = filename
-
-    # Find common base filenames that have both image and JSON files
-    common_basenames = set(image_files.keys()) & set(json_files.keys())
-
-    if not common_basenames:
-        print("No matching image and JSON files found.")
-        return None, None, None, None
-
-    for basename in common_basenames:
-        image_filename = image_files[basename]
-        json_filename = json_files[basename]
-
-        image_path = os.path.join(image_folder, image_filename)
-        json_path = os.path.join(mask_folder, json_filename)
-
-        # Attempt to load and process the mask from the JSON file first
-        # Attempt to load and process the mask from the JSON file first
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                mask_data = json.load(f)
-        except Exception as e:
-            print(f"Error reading JSON file {json_filename}: {e}")
-            continue  # Skip this pair if the JSON cannot be read
-            print(f"Error reading JSON file {json_filename}: {e}")
-            continue  # Skip this pair if the JSON cannot be read
-
-        # Create the mask from the points in the JSON file
-        # Create the mask from the points in the JSON file
-        mask = np.zeros((256, 256), dtype=np.uint8)
-        if 'shapes' in mask_data:
-            for shape in mask_data['shapes']:
-                if 'points' in shape:
-                    points = np.array(shape['points'], dtype=np.int32)
-                    cv2.fillPoly(mask, [points], 1)
-                else:
-                    print(f"No 'points' key in shape in file {json_filename}")
-            # Resize mask to match the image and normalize
-            mask = cv2.resize(mask, (256, 256)) / 255.0
-            mask = np.expand_dims(mask, axis=-1)  # Expand dimensions for compatibility
-            # Resize mask to match the image and normalize
-            mask = cv2.resize(mask, (256, 256)) / 255.0
-            mask = np.expand_dims(mask, axis=-1)  # Expand dimensions for compatibility
-        else:
-            print(f"No 'shapes' key in JSON data in file {json_filename}")
-            continue  # Skip this pair if 'shapes' key is missing
-
-        # Now attempt to load the image
-        try:
-            image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
-            # Ensure the image has three channels
-            if image.shape[-1] != 3:
-                print(f"Image {image_filename} does not have 3 channels. Skipping.")
-                continue
-        except Exception as e:
-            print(f"Error loading image {image_filename}: {e}")
-            continue  # Skip this pair if the image cannot be loaded
-            continue  # Skip this pair if 'shapes' key is missing
-
-        # Now attempt to load the image
-        try:
-            image = img_to_array(load_img(image_path, target_size=(256, 256))) / 255.0
-            # Ensure the image has three channels
-            if image.shape[-1] != 3:
-                print(f"Image {image_filename} does not have 3 channels. Skipping.")
-                continue
-        except Exception as e:
-            print(f"Error loading image {image_filename}: {e}")
-            continue  # Skip this pair if the image cannot be loaded
-
-        # Both image and mask loaded successfully; add to lists
-        images.append(image)
-        # Both image and mask loaded successfully; add to lists
-        images.append(image)
-        masks.append(mask)
-
-    # Convert lists to NumPy arrays
-    images = np.array(images)
-    masks = np.array(masks)
-
-    # Check if we have any data
-    if len(images) == 0:
-        print("No data found after processing. Please check your folders.")
-        return None, None, None, None
-
-    # Check if we have any data
-    if len(images) == 0:
-        print("No data found after processing. Please check your folders.")
-        return None, None, None, None
-
-    # Split into training and validation sets
-    X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=test_size)
-
-    return X_train, X_val, y_train, y_val
-
-
-
-
-# 9. Main Training Loop for Different Models (Updated for SAM)
 def main():
-    # Initialize the SAM model using sam_model_registry
-    sam_checkpoint = "/Users/likexiao/Desktop/2024 s2/8715/sam_vit_h_4b8939.pth"  # Add the correct path to the SAM checkpoint
-    #/Users/likexiao/Desktop/2024 s2/8715/sam_vit_h_4b8939.pth
-    sam_model_type = "vit_h"  # Change this to the correct model type (e.g., "vit_b", "vit_l", etc.)
-    
-    sam_model = sam_model_registry[sam_model_type](checkpoint=sam_checkpoint)
-    sam_predictor = SamPredictor(sam_model)
+    input_folder = 'C:/Users/polis/Downloads/sam_dataset'
+    checkpoint_path = 'C:/Users/polis/Downloads/Azure_TL/sam_vit_h_4b8939.pth'
 
-    image_folder = "SensorCommunication/Acquisition/opensource_datasets"
-    mask_folder = image_folder
-    
-    X_train, X_val, y_train, y_val = load_data_from_folders(image_folder, mask_folder)
-    
-    models_to_train = ['unet', 'resnet50_unet', 'mobilenetv3_unet', 'sam_unet']
-    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+
+    image_files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+    matched_files = []
+    for img_file in image_files:
+        img_path = os.path.join(input_folder, img_file)
+        json_file = os.path.splitext(img_file)[0] + '.json'
+        json_path = os.path.join(input_folder, json_file)
+
+        if os.path.exists(json_path):
+            matched_files.append((img_path, json_path))
+        else:
+            logger.warning(f"No matching JSON file for image: {img_file}")
+
+    logger.info(f"Found {len(matched_files)} matched image-JSON pairs")
+
+    # Initialize the SAM model
+    mask_generator = setup_sam_model(checkpoint_path, device)
+
+    # Process images
     results = []
-    
-    for model_name in models_to_train:
-        print(f"Training {model_name}...")
-        result = train_and_evaluate_model(model_name, X_train, X_val, y_train, y_val, sam_predictor=sam_predictor if model_name == 'sam_unet' else None)
-        results.append(result)
-    
-        print(f"IoU: {result['iou']:.4f}, F1: {result['f1']:.4f}")
-        print(f"IoU (TTA): {result['iou_tta']:.4f}, F1 (TTA): {result['f1_tta']:.4f}")
-        print("---")
-    
-    # Compare the results
-    for result in results:
-        plt.plot(result['history']['val_accuracy'], label=f"{result['model_name']} - Validation Accuracy")
-    
-    plt.title("Model Comparison - Validation Accuracy")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.legend()
-    plt.show()
+    for img_path, json_path in tqdm(matched_files, desc="Processing images"):
+        image, gt_masks, _ = load_image_and_masks(img_path, json_path)
+        if image is None:
+            continue
 
-    # Display final metrics for all models
-    print("Final Results:")
-    for result in results:
-        print(f"{result['model_name']}:")
-        print(f"  IoU: {result['iou']:.4f}, F1: {result['f1']:.4f}")
-        print(f"  IoU (TTA): {result['iou_tta']:.4f}, F1 (TTA): {result['f1_tta']:.4f}")
+        try:
+            original_shape = image.shape[:2] # Store original shape
+            sam_masks = generate_sam_masks(image, mask_generator)
+            resized_shape = image.shape[:2] # Store resized shape
+            ap, ar, dsc = calculate_metrics(gt_masks, sam_masks, original_shape, resized_shape) # Pass shapes to calculate_metrics
+            results.append((ap, ar, dsc))
+            logger.info(f"Metrics for {img_path}: AP={ap:.4f}, AR={ar:.4f}, DSC={dsc:.4f}")
+        except Exception as e:
+            logger.error(f"Error processing {img_path}: {str(e)}")
+            continue
+
+    # Calculate average metrics
+    if results:
+        avg_ap = sum(r[0] for r in results) / len(results)
+        avg_ar = sum(r[1] for r in results) / len(results)
+        avg_dsc = sum(r[2] for r in results) / len(results)
+        logger.info(f"Average metrics: AP={avg_ap:.4f}, AR={avg_ar:.4f}, DSC={avg_dsc:.4f}")
+    else:
+        logger.warning("No images were successfully processed.")
 
 if __name__ == "__main__":
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+    main()
+import os
+import json
+import cv2
+import numpy as np
+import torch
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+import logging
+from tqdm import tqdm
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def load_image_and_masks(image_path, json_path, max_size=1024):
+    try:
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Failed to load image: {image_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        original_height, original_width = image.shape[:2]
+        scale = 1.0
+        if max(original_height, original_width) > max_size:
+            scale = max_size / max(original_height, original_width)
+            new_size = (int(original_width * scale), int(original_height * scale))
+            image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
+
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+
+        gt_masks = []
+        for shape in data.get('shapes', []):
+            if shape.get('label') == 'leaf':
+                points = np.array(shape.get('points', []), dtype=np.float32)
+                # Adjust points if the image was resized
+                if scale != 1.0:
+                    points *= scale
+                points = points.astype(np.int32)
+                mask = np.zeros(image.shape[:2], dtype=np.uint8)
+                cv2.fillPoly(mask, [points], 1)
+                gt_masks.append(mask.astype(bool))
+
+        return image, gt_masks, image_path
+    except Exception as e:
+        logger.error(f"Error loading image or masks for {image_path}: {str(e)}")
+        return None, None, image_path
+
+
+def setup_sam_model(checkpoint_path, device):
+    logger.info(f"Setting up SAM model with checkpoint: {checkpoint_path}")
+    sam = sam_model_registry["vit_h"](checkpoint=checkpoint_path)
+    sam.to(device=device)
+    sam.eval()
+
+    mask_generator = SamAutomaticMaskGenerator(
+        sam,
+        points_per_side=32,
+        pred_iou_thresh=0.86,
+        stability_score_thresh=0.92,
+        crop_n_layers=1,
+        crop_n_points_downscale_factor=2,
+        min_mask_region_area=100,
+    )
+    return mask_generator
+
+def generate_sam_masks(image, mask_generator):
+    # Ensure the image has 3 channels (RGB)
+    if image.ndim == 2:
+        image = np.stack((image,) * 3, axis=-1)
+    elif image.shape[-1] > 3:
+        image = image[:, :, :3]
+
+    # Resize image so that the longer side is exactly 1024 pixels
+    h, w = image.shape[:2]
+    if max(h, w) != 1024:
+        scale = 1024 / max(h, w)
+        new_h, new_w = int(h * scale), int(w * scale)
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    logger.debug(f"Image shape for generate: {image.shape}, dtype: {image.dtype}")
+
+    # Ensure image is in uint8 format
+    if image.dtype != np.uint8:
+        image = (image * 255).astype(np.uint8)
+
+    # Generate masks
+    sam_masks = mask_generator.generate(image)
+
+    return sam_masks
+
+def calculate_metrics(gt_masks, sam_masks, original_shape, resized_shape):
+    if not gt_masks or not sam_masks:
+        return 0, 0, 0
+
+    # Resize ground truth masks to match SAM output
+    resized_gt_masks = []
+    for gt_mask in gt_masks:
+        resized_gt_mask = cv2.resize(gt_mask.astype(np.uint8), (resized_shape[1], resized_shape[0]), interpolation=cv2.INTER_NEAREST)
+        resized_gt_masks.append(resized_gt_mask.astype(bool))
+
+
+    sam_binary_masks = [mask['segmentation'] for mask in sam_masks]
+
+    ious = []
+    for resized_gt_mask in resized_gt_masks:
+        for sam_mask in sam_binary_masks:
+            intersection = np.logical_and(resized_gt_mask, sam_mask).sum()
+            union = np.logical_or(resized_gt_mask, sam_mask).sum()
+            iou = intersection / union if union > 0 else 0
+            ious.append(iou)
+
+    # Calculate metrics
+    ap = sum(1 for iou in ious if iou > 0.5) / len(sam_binary_masks) if sam_binary_masks else 0
+    ar = sum(1 for iou in ious if iou > 0.5) / len(gt_masks) if gt_masks else 0
+    dsc = 2 * ap * ar / (ap + ar) if (ap + ar) > 0 else 0
+
+    return ap, ar, dsc
+
+def main():
+    input_folder = 'C:/Users/polis/Downloads/sam_dataset'
+    checkpoint_path = 'C:/Users/polis/Downloads/Azure_TL/sam_vit_h_4b8939.pth'
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+
+    image_files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+    matched_files = []
+    for img_file in image_files:
+        img_path = os.path.join(input_folder, img_file)
+        json_file = os.path.splitext(img_file)[0] + '.json'
+        json_path = os.path.join(input_folder, json_file)
+
+        if os.path.exists(json_path):
+            matched_files.append((img_path, json_path))
+        else:
+            logger.warning(f"No matching JSON file for image: {img_file}")
+
+    logger.info(f"Found {len(matched_files)} matched image-JSON pairs")
+
+    # Initialize the SAM model
+    mask_generator = setup_sam_model(checkpoint_path, device)
+
+    # Process images
+    results = []
+    for img_path, json_path in tqdm(matched_files, desc="Processing images"):
+        image, gt_masks, _ = load_image_and_masks(img_path, json_path)
+        if image is None:
+            continue
+
+        try:
+            original_shape = image.shape[:2] # Store original shape
+            sam_masks = generate_sam_masks(image, mask_generator)
+            resized_shape = image.shape[:2] # Store resized shape
+            ap, ar, dsc = calculate_metrics(gt_masks, sam_masks, original_shape, resized_shape) # Pass shapes to calculate_metrics
+            results.append((ap, ar, dsc))
+            logger.info(f"Metrics for {img_path}: AP={ap:.4f}, AR={ar:.4f}, DSC={dsc:.4f}")
+        except Exception as e:
+            logger.error(f"Error processing {img_path}: {str(e)}")
+            continue
+
+    # Calculate average metrics
+    if results:
+        avg_ap = sum(r[0] for r in results) / len(results)
+        avg_ar = sum(r[1] for r in results) / len(results)
+        avg_dsc = sum(r[2] for r in results) / len(results)
+        logger.info(f"Average metrics: AP={avg_ap:.4f}, AR={avg_ar:.4f}, DSC={avg_dsc:.4f}")
+    else:
+        logger.warning("No images were successfully processed.")
+
+if __name__ == "__main__":
     main()
