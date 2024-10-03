@@ -69,13 +69,16 @@ def extract_leaf_temperatures(transformed_masks, dc_image, calibration_params):
             print(f"Skipping mask {i} as it is None.")
             leaf_temperatures.append(None)
             continue
-        
+
         if mask.shape != dc_image.shape:
             print(f"Mask size {mask.shape} does not match image size {dc_image.shape}, resizing mask.")
             mask = cv2.resize(mask.astype(np.uint8), (dc_image.shape[1], dc_image.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
-        
+
         pixel_values = dc_image[mask]
+        print(f"Debug: Leaf {i}, Pixel values: {pixel_values[:10]}...")  # Print first few pixel values for debugging
+
         temperatures = convert_pixel_to_temperature(pixel_values, calibration_params)
+        print(f"Debug: Leaf {i}, Converted temperatures: {temperatures[:10]}...")  # Print first few temperatures for debugging
         leaf_temperatures.append(temperatures)
 
     return leaf_temperatures
@@ -88,6 +91,26 @@ def save_temperatures(leaf_temperatures, filename):
     except Exception as e:
         raise ValueError(f"Error saving temperatures: {e}")
 
+def overlay_temperatures(image, masks, temperatures):
+    """Overlay the average temperature of each leaf onto the image."""
+    overlay_image = image.copy()
+    for i, mask in enumerate(masks):
+        if mask is None or temperatures[i] is None:
+            continue
+
+        avg_temp = np.mean(temperatures[i])
+        text = f"{avg_temp:.2f}°C"  # Corrected degree symbol
+        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                cv2.putText(overlay_image, text, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+    return overlay_image
+
+
 def main():
     # Define the directories based on your setup
     leaf_mask_dir = os.path.normpath('../SensorCommunication/Acquisition/batch_1/test_plant_20240903103507')
@@ -97,7 +120,8 @@ def main():
     rgb_camera_params_path = os.path.join(camera_params_dir, 'kd_intrinsics.txt')
     thermal_camera_params_path = os.path.join(camera_params_dir, 'kdc_intrinsics.txt')
 
-    calibration_params = {'gain': 0.04, 'offset': -273.15}
+    # Adjusted gain and offset for realistic temperatures
+    calibration_params = {'gain': -0.00785, 'offset': 172.46}
 
     # Load camera parameters
     K_dc, dist_dc = load_camera_parameters(thermal_camera_params_path)
@@ -151,18 +175,26 @@ def main():
             # Extract temperatures for each leaf from the thermal image
             leaf_temperatures = extract_leaf_temperatures(transformed_masks, undistorted_dc_image, calibration_params)
 
+            # Overlay temperatures on the image
+            overlay_image = overlay_temperatures(undistorted_dc_image, transformed_masks, leaf_temperatures)
+
+            # Save the overlay image
+            overlay_image_path = os.path.join(thermal_image_dir, f"{base_name}_overlay.png")
+            cv2.imwrite(overlay_image_path, overlay_image)
+
             # Print the extracted temperatures for each leaf
             for i, temperatures in enumerate(leaf_temperatures):
                 if temperatures is not None:
                     print(f"Leaf {i}:")
                     print(f"  Min temperature: {np.min(temperatures):.2f}°C")
                     print(f"  Max temperature: {np.max(temperatures):.2f}°C")
-                    print(f"  Mean temperature: {np.mean(temperatures):.2f}°C")
+                    print(f"  Average temperature: {np.mean(temperatures):.2f}°C")
                 else:
-                    print(f"No temperatures extracted for leaf {i}.")
+                    print(f"Leaf {i}: Data not available.")
 
-            # Save the extracted temperatures to a file
-            save_temperatures(leaf_temperatures, filename=f'{base_name}_temperatures.npy')
+            # Optionally, save the temperatures to a file
+            temperature_output_path = os.path.join(thermal_image_dir, f"{base_name}_leaf_temperatures.npy")
+            save_temperatures(leaf_temperatures, temperature_output_path)
 
 if __name__ == "__main__":
     main()
