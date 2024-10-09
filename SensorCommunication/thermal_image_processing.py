@@ -110,6 +110,55 @@ def overlay_temperatures(image, masks, temperatures):
 
     return overlay_image
 
+def calculate_gain_offset(cold_pixel_value, hot_pixel_value, cold_temp, hot_temp):
+    """
+    Calculate the gain and offset using pixel values from cold and hot water thermal shots.
+    """
+    gain = (hot_temp - cold_temp) / (hot_pixel_value - cold_pixel_value)
+    offset = cold_temp - gain * cold_pixel_value
+    return gain, offset
+
+def find_cold_and_hot_pixel_values(image, percentile=1):
+    """
+    Find the representative cold and hot pixel values from the input thermal image,
+    based on the lowest and highest percentile of pixel values.
+    
+    Args:
+        image (numpy.ndarray): Thermal image (in tiff format, 16-bit).
+        percentile (float): The percentage of pixels to consider for cold and hot water.
+                            Default is 1%, meaning the coldest 1% and hottest 1% pixels.
+    
+    Returns:
+        tuple: (cold water pixel value, hot water pixel value)
+    """
+    # Check if the image is loaded correctly
+    if image is None:
+        raise ValueError("The input image is empty or not loaded correctly.")
+    
+    # Ensure the image is 16-bit
+    if image.dtype != np.uint16:
+        raise ValueError(f"The image should be 16-bit, but got {image.dtype} instead.")
+    
+    # Flatten the image to get all pixel values as a 1D array
+    flat_image = image.flatten()
+    
+    # Compute the pixel values at the given percentiles
+    cold_threshold = np.percentile(flat_image, percentile)
+    hot_threshold = np.percentile(flat_image, 100 - percentile)
+
+    # Get the pixels in the coldest and hottest percentile ranges
+    cold_pixels = flat_image[flat_image <= cold_threshold]
+    hot_pixels = flat_image[flat_image >= hot_threshold]
+
+    # Calculate the mean pixel value for cold and hot pixels
+    cold_pixel_value = np.mean(cold_pixels)
+    hot_pixel_value = np.mean(hot_pixels)
+
+    # Output the cold water and hot water pixel values
+    print(f"Cold water pixel value (based on {percentile}% of lowest pixels): {cold_pixel_value}")
+    print(f"Hot water pixel value (based on {percentile}% of highest pixels): {hot_pixel_value}")
+
+    return cold_pixel_value, hot_pixel_value
 
 def main():
     # Define the directories based on your setup
