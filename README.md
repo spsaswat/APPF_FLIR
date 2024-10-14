@@ -8,7 +8,7 @@ The Australian Plant Phenomics Facility (APPF) is a world-leading infrastructure
 
 # APPF_FLIR Project Overview
 
-This project aims to develop an advanced phenotyping system using a customized 3D hyperspectral scanner that can accurately identify the expression of food-grade recombinant proteins within plant leaves. This system is designed to streamline phenotypic data collection and analysis, ultimately enhancing the breeding and cultivation of plants with desired traits.
+This project aims to develop an advanced phenotyping system using a customized 3D hyperspectral and thermal scanner that can accurately identify the expression of food-grade recombinant proteins within plant leaves and perform thermal analysis of leaves. This system is designed to streamline phenotypic data collection and analysis, ultimately enhancing the breeding and cultivation of plants with desired traits.
 
 ## FLIR A645 SC Camera Overview
 
