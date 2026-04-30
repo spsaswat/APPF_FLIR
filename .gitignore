@@ -10,3 +10,5 @@ centernet_mobilenetv2_fpn_od
 efficientdet_d1_coco17_tpu-32
 faster_rcnn_inception_v2_coco_2018_01_28
 mask_rcnn_inception_v2_coco_2018_01_28
+
+SensorCommunication/label_SAM/data/
